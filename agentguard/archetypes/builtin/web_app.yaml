@@ -1,0 +1,90 @@
+id: "web_app"
+name: "Web Application"
+description: "Full-stack web application with frontend templates, backend routes, and database"
+version: "1.1.0"
+maturity: "production"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "fastapi"
+    database: "postgresql"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 3
+
+structure:
+  expected_dirs:
+    - "src/{project_name}/"
+    - "src/{project_name}/models/"
+    - "src/{project_name}/routes/"
+    - "src/{project_name}/services/"
+    - "src/{project_name}/templates/"
+    - "src/{project_name}/static/"
+    - "tests/"
+  expected_files:
+    - "src/{project_name}/__init__.py"
+    - "src/{project_name}/main.py"
+    - "src/{project_name}/config.py"
+    - "pyproject.toml"
+    - "README.md"
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 3000
+  contracts:
+    include: ["spec", "skeleton", "reference_patterns"]
+    max_tokens: 7000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 9000
+  logic:
+    include: ["function_stub", "function_tests", "function_deps", "reference_patterns"]
+    max_tokens: 6000
+
+validation:
+  checks: ["syntax", "lint", "types", "imports", "structure"]
+  lint_rules: "ruff:default"
+  type_strictness: "basic"
+
+self_challenge:
+  criteria:
+    - "All pages and routes match the spec"
+    - "Authentication and authorization implemented as specified"
+    - "No hardcoded secrets or credentials"
+    - "All referenced imports actually exist"
+    - "No invented API endpoints or methods"
+    - "Error handling present on all routes"
+    - "Database models match data requirements"
+    - "Templates reference valid routes and variables"
+    - "CSRF protection on form submissions"
+    - "No XSS vulnerabilities in template rendering"
+    # ── Enterprise criteria ──
+    - "No null assertions or unsafe type casts"
+    - "No magic numbers — all constants named and extracted"
+    - "No DRY violations — shared logic extracted"
+    - "Error boundaries or global error handlers present"
+    - "Form validation on both client and server"
+    - "Data layer is async-compatible for migration"
+    - "Responsive layout with at least two breakpoints"
+    - "Semantic HTML and basic ARIA attributes on interactive elements"
+    - "All user-facing strings are centralizable for i18n"
+    - "Component or template files are under 200 lines each"
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "fastapi_crud_pattern"
+  - "jinja2_template_pattern"
+  - "sqlalchemy_model_pattern"
+  - "pydantic_schema_pattern"
+  - "session_auth_pattern"
+  - "static_files_pattern"

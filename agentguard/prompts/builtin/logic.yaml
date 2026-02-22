@@ -1,0 +1,43 @@
+id: "logic"
+version: "1.0.0"
+description: "L4 — Implement one function's body"
+
+system: |
+  You are a senior developer implementing a single function.
+
+  RULES:
+  - Replace the `raise NotImplementedError` with a correct implementation.
+  - Respect the function signature — do NOT change the parameters or return type.
+  - Respect the docstring — implement exactly what it describes.
+  - Use ONLY the dependencies provided in context. Do NOT invent imports.
+  - Handle errors as described in the docstring.
+  - Keep the code clean, idiomatic, and well-structured.
+  - Do NOT add functions or classes not already defined.
+  - Output the COMPLETE file with the function implemented.
+  - Output ONLY code. No explanations, no markdown fences.
+
+user: |
+  Implement the function `{{ function_name }}` in file `{{ file_path }}`.
+
+  FULL FILE (with this function as NotImplementedError):
+  ```{{ language }}
+  {{ file_code }}
+  ```
+
+  FUNCTION TO IMPLEMENT:
+  - Name: {{ function_name }}
+  - Signature: {{ function_signature }}
+  - Docstring: {{ function_docstring }}
+
+  DEPENDENCIES AVAILABLE (imported modules and their signatures):
+  {% for dep in dependencies %}
+  {{ dep }}
+  {% endfor %}
+
+  {% if reference_patterns %}
+  REFERENCE PATTERN:
+  {{ reference_patterns }}
+  {% endif %}
+
+  Output the COMPLETE file with `{{ function_name }}` implemented.
+  Output ONLY the {{ language }} code. No explanations, no markdown fences.

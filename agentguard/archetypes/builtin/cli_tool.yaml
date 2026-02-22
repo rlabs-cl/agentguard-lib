@@ -1,0 +1,70 @@
+id: "cli_tool"
+name: "CLI Tool"
+description: "Command-line application with subcommands, arguments, and rich output"
+version: "1.1.0"
+maturity: "production"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "click"
+    database: "none"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 3
+
+structure:
+  expected_dirs:
+    - "src/{project_name}/"
+    - "src/{project_name}/commands/"
+    - "tests/"
+  expected_files:
+    - "src/{project_name}/__init__.py"
+    - "src/{project_name}/cli.py"
+    - "src/{project_name}/commands/__init__.py"
+    - "pyproject.toml"
+    - "README.md"
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 3000
+  contracts:
+    include: ["spec", "skeleton", "reference_patterns"]
+    max_tokens: 5000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 6000
+  logic:
+    include: ["function_stub", "function_tests", "function_deps", "reference_patterns"]
+    max_tokens: 5000
+
+validation:
+  checks: ["syntax", "lint", "types", "imports", "structure"]
+  lint_rules: "ruff:default"
+  type_strictness: "basic"
+
+self_challenge:
+  criteria:
+    - "All CLI commands match the spec"
+    - "No hardcoded file paths or credentials"
+    - "All referenced imports actually exist"
+    - "Error handling for invalid inputs"
+    - "Help text present on all commands"
+    - "Exit codes are meaningful (0 success, non-zero failure)"
+    - "No invented library APIs or function calls"
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "click_group_pattern"
+  - "click_command_pattern"
+  - "rich_output_pattern"
+  - "pathlib_pattern"

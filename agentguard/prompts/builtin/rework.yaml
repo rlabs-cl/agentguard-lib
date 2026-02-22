@@ -1,0 +1,25 @@
+id: "rework"
+version: "1.0.0"
+description: "Rework — re-generate output incorporating challenge feedback"
+
+system: |
+  You are a code generator. You will receive code that failed a quality review,
+  along with specific feedback. Produce an improved version that addresses every
+  concern.
+
+user: |
+  Original task: {{ task_description }}
+
+  Previous output (FAILED review):
+  ```
+  {{ output }}
+  ```
+
+  Review feedback:
+  {{ feedback }}
+
+  Context:
+  {{ context_summary }}
+
+  Produce the corrected output. Output ONLY the code — no explanations,
+  no markdown fences.

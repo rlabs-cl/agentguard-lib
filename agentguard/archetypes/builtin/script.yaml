@@ -1,0 +1,61 @@
+id: "script"
+name: "Python Script"
+description: "Single-file or few-file Python script for automation, data processing, or utilities"
+version: "1.1.0"
+maturity: "prototype"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "stdlib"
+    database: "none"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 2
+
+structure:
+  expected_dirs: []
+  expected_files:
+    - "main.py"
+    - "README.md"
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 2000
+  contracts:
+    include: ["spec", "skeleton"]
+    max_tokens: 4000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 4000
+  logic:
+    include: ["function_stub", "function_deps"]
+    max_tokens: 4000
+
+validation:
+  checks: ["syntax", "lint", "types", "imports"]
+  lint_rules: "ruff:default"
+  type_strictness: "basic"
+
+self_challenge:
+  criteria:
+    - "Script fulfills the described purpose"
+    - "No hardcoded file paths or credentials"
+    - "All referenced imports are standard library or clearly listed"
+    - "Error handling for I/O operations"
+    - "No invented function calls or APIs"
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "argparse_pattern"
+  - "pathlib_pattern"
+  - "logging_pattern"

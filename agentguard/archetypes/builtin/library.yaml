@@ -1,0 +1,72 @@
+id: "library"
+name: "Python Library"
+description: "Reusable Python package with public API, documentation, and comprehensive tests"
+version: "1.0.0"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "none"
+    database: "none"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 3
+
+structure:
+  expected_dirs:
+    - "src/{project_name}/"
+    - "tests/"
+    - "docs/"
+  expected_files:
+    - "src/{project_name}/__init__.py"
+    - "src/{project_name}/py.typed"
+    - "pyproject.toml"
+    - "README.md"
+    - "LICENSE"
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 3000
+  contracts:
+    include: ["spec", "skeleton", "reference_patterns"]
+    max_tokens: 6000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 7000
+  logic:
+    include: ["function_stub", "function_tests", "function_deps", "reference_patterns"]
+    max_tokens: 5000
+
+validation:
+  checks: ["syntax", "lint", "types", "imports", "structure"]
+  lint_rules: "ruff:default"
+  type_strictness: "strict"
+
+self_challenge:
+  criteria:
+    - "Public API matches the spec"
+    - "All public functions have docstrings"
+    - "Type annotations on all public signatures"
+    - "No hardcoded paths or credentials"
+    - "All referenced imports actually exist"
+    - "No invented external dependencies"
+    - "Error handling with meaningful exceptions"
+    - "__init__.py exports match public API intent"
+    - "Test coverage for all public functions"
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "dataclass_pattern"
+  - "abc_interface_pattern"
+  - "pytest_fixture_pattern"
+  - "typing_pattern"
+  - "contextmanager_pattern"

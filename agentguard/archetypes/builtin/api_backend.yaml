@@ -1,0 +1,81 @@
+id: "api_backend"
+name: "API Backend Service"
+description: "REST API with database, authentication, and business logic"
+version: "1.1.0"
+maturity: "production"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "fastapi"
+    database: "postgresql"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 3
+
+structure:
+  expected_dirs:
+    - "src/{project_name}/"
+    - "src/{project_name}/models/"
+    - "src/{project_name}/routes/"
+    - "src/{project_name}/services/"
+    - "tests/"
+  expected_files:
+    - "src/{project_name}/__init__.py"
+    - "src/{project_name}/main.py"
+    - "pyproject.toml"
+    - "README.md"
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 3000
+  contracts:
+    include: ["spec", "skeleton", "reference_patterns"]
+    max_tokens: 6000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 8000
+  logic:
+    include: ["function_stub", "function_tests", "function_deps", "reference_patterns"]
+    max_tokens: 5000
+
+validation:
+  checks: ["syntax", "lint", "types", "imports", "structure"]
+  lint_rules: "ruff:default"
+  type_strictness: "basic"
+
+self_challenge:
+  criteria:
+    - "All endpoints match the spec"
+    - "Authentication implemented as specified"
+    - "No hardcoded secrets or credentials"
+    - "All referenced imports actually exist"
+    - "No invented API endpoints or methods"
+    - "Error handling present on all endpoints"
+    - "Database models match data requirements"
+    # ── Enterprise criteria ──
+    - "No unsafe type casts or assertions"
+    - "No magic numbers — all constants named"
+    - "No DRY violations — shared logic extracted into services"
+    - "Data layer functions are async"
+    - "Input validation on all endpoints (Pydantic models)"
+    - "Proper HTTP status codes for all responses"
+    - "Logging at service boundaries"
+    - "Configuration via environment variables, not hardcoded"
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "fastapi_crud_pattern"
+  - "jwt_auth_pattern"
+  - "sqlalchemy_model_pattern"
+  - "pydantic_schema_pattern"
+  - "pytest_async_pattern"

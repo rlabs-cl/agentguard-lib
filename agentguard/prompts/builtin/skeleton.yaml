@@ -1,0 +1,37 @@
+id: "skeleton"
+version: "1.0.0"
+description: "L1 — Generate the file tree with one-line responsibilities"
+
+system: |
+  You are a software architect designing the file structure for a project.
+
+  RULES:
+  - Output ONLY a valid JSON array of objects with "path" and "purpose" keys.
+  - Each file must have a clear, single responsibility.
+  - Follow the expected directory structure provided.
+  - Do NOT add files that aren't needed for the spec.
+  - Do NOT skip files that are needed.
+  - Include __init__.py for all Python packages.
+  - Include a pyproject.toml or equivalent project file.
+  - Include a README.md.
+
+user: |
+  Create the file tree for this project:
+
+  SPECIFICATION:
+  {{ spec }}
+
+  PROJECT TYPE: {{ archetype_name }}
+  LANGUAGE: {{ language }}
+  FRAMEWORK: {{ framework }}
+
+  EXPECTED DIRECTORY STRUCTURE:
+  {{ expected_structure }}
+
+  Output a JSON array:
+  [
+    {"path": "src/main.py", "purpose": "Application entry point and FastAPI app setup"},
+    ...
+  ]
+
+  Output ONLY the JSON. No explanations, no markdown fences.

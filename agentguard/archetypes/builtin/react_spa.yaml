@@ -1,0 +1,115 @@
+id: "react_spa"
+name: "React Single-Page Application"
+description: "React + TypeScript SPA with Vite, component architecture, and client-side state management"
+version: "1.0.0"
+maturity: "production"
+
+tech_stack:
+  defaults:
+    language: "typescript"
+    framework: "react"
+    database: "none"
+    testing: "vitest"
+    linter: "eslint"
+    type_checker: "tsc"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 3
+
+structure:
+  expected_dirs:
+    - "src/"
+    - "src/components/"
+    - "src/context/"
+    - "src/hooks/"
+    - "src/utils/"
+    - "src/data/"
+    - "src/types/"
+  expected_files:
+    - "package.json"
+    - "tsconfig.json"
+    - "vite.config.ts"
+    - "index.html"
+    - "src/main.tsx"
+    - "src/App.tsx"
+    - "README.md"
+
+# Files to ALWAYS include, keyed by maturity level.
+# prototype: fast, compact, no extras.
+# production: adds error handling, constants extraction, async-ready data.
+# enterprise: adds i18n, logging, full a11y, split contexts, test stubs.
+infrastructure_files:
+  - "src/components/ErrorBoundary.tsx"      # production+
+  - "src/lib/constants.ts"                  # production+
+  - "src/hooks/useAsync.ts"                 # production+
+  - "src/i18n/strings.ts"                   # enterprise
+  - "src/lib/logger.ts"                     # enterprise
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 3000
+  contracts:
+    include: ["spec", "skeleton", "reference_patterns"]
+    max_tokens: 7000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 9000
+  logic:
+    include: ["function_stub", "function_deps", "reference_patterns"]
+    max_tokens: 6000
+
+validation:
+  checks: ["syntax", "types", "imports", "structure"]
+  lint_rules: "eslint:recommended"
+  type_strictness: "strict"
+
+self_challenge:
+  criteria:
+    # ── Functional correctness (1-12) ──
+    - "All pages and routes match the spec"
+    - "No hardcoded secrets or credentials"
+    - "All referenced imports actually exist in the project"
+    - "No invented API endpoints or library methods"
+    - "Error handling present on all data operations"
+    - "Data models and types match the spec requirements"
+    - "All CRUD operations implemented as specified"
+    - "Form validation prevents invalid data submission"
+    - "Navigation works without full page reloads"
+    - "Data persists correctly (localStorage, API, or as specified)"
+    - "No orphaned references when entities are deleted"
+    - "Business logic rules enforced (e.g. status transitions, constraints)"
+    # ── Architecture & maintainability (13-20) ──
+    - "No null! or 'as any' type assertions — use safe narrowing"
+    - "No magic numbers — all constants named and extracted"
+    - "No DRY violations — shared logic extracted into utils or hooks"
+    - "Context is split by domain if more than 3 entities (no god-context)"
+    - "Forms are separate components, testable in isolation"
+    - "Data layer functions are async-compatible for future API migration"
+    - "CSS uses custom properties or modules — no inline style objects for layout"
+    - "Responsive layout with at least two breakpoints"
+    # ── Enterprise quality (21-30) ──
+    - "ErrorBoundary wraps every route-level component"
+    - "Every interactive element has keyboard support (Enter/Space handlers)"
+    - "Modals have aria-modal, focus trap, and Escape-to-close"
+    - "Form inputs use htmlFor+id pairing or wrapping label pattern"
+    - "All user-facing strings are centralized (i18n-extractable)"
+    - "Every state mutation has a logging hook point"
+    - "Loading and error states handled for async operations"
+    - "Semantic HTML elements used (nav, main, section, article, header)"
+    - "No XSS vulnerabilities — no dangerouslySetInnerHTML"
+    - "Component files are under 150 lines each"
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "react_context_pattern"
+  - "react_hook_pattern"
+  - "react_form_pattern"
+  - "react_error_boundary_pattern"
+  - "vite_config_pattern"
+  - "css_custom_properties_pattern"

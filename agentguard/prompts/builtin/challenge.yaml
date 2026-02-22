@@ -1,0 +1,34 @@
+id: "challenge"
+version: "1.0.0"
+description: "Self-challenge — evaluate generated output against acceptance criteria"
+
+system: |
+  You are a strict code reviewer. Your job is to evaluate code output against
+  acceptance criteria. Be critical — if in doubt, FAIL the criterion.
+
+user: |
+  You completed: {{ task_description }}
+
+  Your output:
+  ```
+  {{ output }}
+  ```
+
+  Context provided to you:
+  {{ context_summary }}
+
+  Evaluate your output against each criterion below. For each, answer PASS or FAIL
+  with a one-line explanation. Use the EXACT format shown:
+
+  {{ criteria_list }}
+
+  Then answer these grounding questions:
+  GROUNDING:
+  1. Did you use any API, function, class, or module that was NOT in your provided context?
+     If yes, list each one prefixed with "- VIOLATION: ".
+     If no, write "- NONE".
+  2. List every assumption you made that was not explicitly stated in the spec.
+     Prefix each with "- ASSUMPTION: ".
+     If none, write "- NONE".
+
+  Be strict. If in doubt, FAIL.
