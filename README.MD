@@ -1,5 +1,13 @@
 # AgentGuard
 
+[![CI](https://github.com/rlabs-cl/agentguard-lib/actions/workflows/ci.yml/badge.svg)](https://github.com/rlabs-cl/agentguard-lib/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/rlabs-agentguard?color=blue)](https://pypi.org/project/rlabs-agentguard/)
+[![Python](https://img.shields.io/pypi/pyversions/rlabs-agentguard)](https://pypi.org/project/rlabs-agentguard/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/rlabs-cl/agentguard-lib/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/pypi/dm/rlabs-agentguard)](https://pypi.org/project/rlabs-agentguard/)
+[![Typed](https://img.shields.io/badge/typing-typed-blue)](https://github.com/rlabs-cl/agentguard-lib)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
+
 > A quality-assurance engine for LLM-generated code.
 > Python engine + HTTP protocol + MCP server + thin SDKs for any language.
 
