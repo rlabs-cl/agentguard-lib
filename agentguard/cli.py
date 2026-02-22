@@ -173,7 +173,18 @@ def trace(trace_file: str) -> None:
 @click.option(
     "--reload", is_flag=True, help="Enable auto-reload for development.",
 )
-def serve(host: str, port: int, api_key: str | None, trace_store: str | None, reload: bool) -> None:
+@click.option(
+    "--platform-key", default=None, envvar="AGENTGUARD_PLATFORM_KEY",
+    help="Platform API key (ag_*) to validate on startup.",
+)
+def serve(
+    host: str,
+    port: int,
+    api_key: str | None,
+    trace_store: str | None,
+    reload: bool,
+    platform_key: str | None,
+) -> None:
     """Start the AgentGuard HTTP server.
 
     \b
@@ -181,6 +192,7 @@ def serve(host: str, port: int, api_key: str | None, trace_store: str | None, re
         agentguard serve
         agentguard serve --host 0.0.0.0 --port 9000
         agentguard serve --api-key "my-secret-key"
+        agentguard serve --platform-key ag_xxx  # validates against platform
     """
     try:
         import uvicorn
@@ -191,6 +203,10 @@ def serve(host: str, port: int, api_key: str | None, trace_store: str | None, re
             err=True,
         )
         sys.exit(1)
+
+    # Validate platform API key on startup if provided
+    if platform_key:
+        _validate_platform_key(platform_key)
 
     from agentguard.server.app import create_app
 
@@ -439,6 +455,325 @@ def config_test() -> None:
     except Exception as e:
         click.echo(f"✗ Connection failed: {e}")
         sys.exit(1)
+
+
+# ── Marketplace commands ──────────────────────────────────────────
+
+
+@main.group(name="marketplace")
+def marketplace_group() -> None:
+    """Browse and search the AgentGuard archetype marketplace."""
+
+
+@marketplace_group.command(name="search")
+@click.argument("query")
+@click.option(
+    "-c", "--category", default=None,
+    help="Filter by category.",
+)
+@click.option(
+    "--sort", default="popular",
+    type=click.Choice(["popular", "newest", "price_asc", "price_desc", "rating"]),
+    show_default=True,
+    help="Sort order.",
+)
+@click.option(
+    "--page", default=1, show_default=True, type=int,
+    help="Page number.",
+)
+def marketplace_search(query: str, category: str | None, sort: str, page: int) -> None:
+    """Search the marketplace for archetypes.
+
+    QUERY is the search term (name, description, slug).
+    """
+    from agentguard.platform.client import PlatformClient
+    from agentguard.platform.config import load_config
+
+    _require_httpx()
+
+    cfg = load_config()
+    client = PlatformClient(cfg)
+
+    async def _run() -> None:
+        try:
+            result = await client.search_marketplace(
+                query=query, category=category, sort=sort, page=page,
+            )
+            items = result.get("items", [])
+            total = result.get("total", 0)
+
+            if not items:
+                click.echo("No archetypes found.")
+                return
+
+            click.echo(f"Found {total} archetype(s) (page {result.get('page', 1)}):\n")
+            for arch in items:
+                price = arch.get("price_cents", 0)
+                price_str = "FREE" if price == 0 else f"${price / 100:.2f}"
+                rating = arch.get("rating_avg", 0)
+                downloads = arch.get("downloads", 0)
+                click.echo(
+                    f"  {arch['slug']:<30} {price_str:<8} "
+                    f"★ {rating:.1f}  ↓ {downloads}"
+                )
+                if arch.get("description"):
+                    click.echo(f"    {arch['description'][:80]}")
+                click.echo()
+        finally:
+            await client.close()
+
+    asyncio.run(_run())
+
+
+@marketplace_group.command(name="list")
+@click.option(
+    "-c", "--category", default=None,
+    help="Filter by category.",
+)
+@click.option(
+    "--sort", default="popular",
+    type=click.Choice(["popular", "newest", "price_asc", "price_desc", "rating"]),
+    show_default=True,
+    help="Sort order.",
+)
+@click.option(
+    "--page", default=1, show_default=True, type=int,
+    help="Page number.",
+)
+@click.option(
+    "--page-size", default=20, show_default=True, type=int,
+    help="Items per page.",
+)
+def marketplace_list(category: str | None, sort: str, page: int, page_size: int) -> None:
+    """List all published archetypes in the marketplace."""
+    from agentguard.platform.client import PlatformClient
+    from agentguard.platform.config import load_config
+
+    _require_httpx()
+
+    cfg = load_config()
+    client = PlatformClient(cfg)
+
+    async def _run() -> None:
+        try:
+            result = await client.search_marketplace(
+                category=category, sort=sort, page=page, page_size=page_size,
+            )
+            items = result.get("items", [])
+            total = result.get("total", 0)
+
+            if not items:
+                click.echo("No archetypes published yet.")
+                return
+
+            click.echo(f"Marketplace archetypes ({total} total, page {result.get('page', 1)}):\n")
+            for arch in items:
+                price = arch.get("price_cents", 0)
+                price_str = "FREE" if price == 0 else f"${price / 100:.2f}"
+                rating = arch.get("rating_avg", 0)
+                downloads = arch.get("downloads", 0)
+                click.echo(
+                    f"  {arch['slug']:<30} {price_str:<8} "
+                    f"★ {rating:.1f}  ↓ {downloads}"
+                )
+        finally:
+            await client.close()
+
+    asyncio.run(_run())
+
+
+@marketplace_group.command(name="info")
+@click.argument("slug")
+def marketplace_info(slug: str) -> None:
+    """Show detailed information about a marketplace archetype."""
+    from agentguard.platform.client import PlatformClient
+    from agentguard.platform.config import load_config
+
+    _require_httpx()
+
+    cfg = load_config()
+    client = PlatformClient(cfg)
+
+    async def _run() -> None:
+        try:
+            detail = await client.get_archetype_detail(slug)
+            click.echo(f"Name:        {detail.get('name', slug)}")
+            click.echo(f"Slug:        {detail.get('slug', slug)}")
+            click.echo(f"Author:      {detail.get('author_name', 'unknown')}")
+            click.echo(f"Version:     {detail.get('version', '?')}")
+            price = detail.get("price_cents", 0)
+            click.echo(f"Price:       {'FREE' if price == 0 else f'${price / 100:.2f}'}")
+            click.echo(f"Category:    {detail.get('category', '-')}")
+            click.echo(f"Downloads:   {detail.get('downloads', 0)}")
+            rating = detail.get("rating_avg", 0)
+            click.echo(f"Rating:      ★ {rating:.1f} ({detail.get('rating_count', 0)} reviews)")
+            click.echo(f"Tags:        {', '.join(detail.get('tags', []))}")
+            click.echo(f"Description: {detail.get('description', '-')}")
+            if detail.get("long_description"):
+                click.echo(f"\n{detail['long_description']}")
+            if detail.get("is_purchased"):
+                click.echo("\n  ✓ You own this archetype")
+        except Exception as e:
+            click.echo(f"✗ Failed to fetch archetype: {e}", err=True)
+            sys.exit(1)
+        finally:
+            await client.close()
+
+    asyncio.run(_run())
+
+
+# ── Install archetype from marketplace ────────────────────────────
+
+
+@main.command(name="install")
+@click.argument("slug")
+@click.option(
+    "--force", is_flag=True,
+    help="Overwrite if already installed.",
+)
+def install_archetype(slug: str, force: bool) -> None:
+    """Download and install a marketplace archetype.
+
+    SLUG is the archetype identifier on the marketplace (e.g. "my-archetype").
+
+    The archetype YAML will be saved to ~/.agentguard/archetypes/<slug>.yaml
+    and registered for use with ``agentguard generate -a <slug>``.
+    """
+    from agentguard.platform.client import PlatformClient
+    from agentguard.platform.config import load_config
+
+    _require_httpx()
+
+    cfg = load_config()
+    if not cfg.is_configured:
+        click.echo("✗ Platform not configured (no API key)")
+        click.echo("  Run: agentguard config set-key <api_key>")
+        sys.exit(1)
+
+    client = PlatformClient(cfg)
+    archetypes_dir = Path.home() / ".agentguard" / "archetypes"
+
+    async def _run() -> None:
+        try:
+            # Check if already installed
+            target = archetypes_dir / f"{slug}.yaml"
+            if target.exists() and not force:
+                click.echo(f"✗ Archetype '{slug}' already installed at {target}")
+                click.echo("  Use --force to overwrite.")
+                sys.exit(1)
+
+            click.echo(f"Downloading archetype '{slug}'...")
+            data = await client.download_archetype(slug)
+
+            yaml_content = data["yaml_content"]
+            content_hash = data.get("content_hash", "")
+            trust_level = data.get("trust_level", "community")
+
+            # Validate integrity via the registry
+            from agentguard.archetypes.registry import ArchetypeRegistry
+            from agentguard.archetypes.schema import TrustLevel
+
+            registry = ArchetypeRegistry(strict=True)
+            tl = TrustLevel(trust_level) if trust_level in TrustLevel.__members__.values() else TrustLevel.community
+            entry = registry.register_remote(
+                archetype_id=slug if "id" not in data else data.get("slug", slug),
+                yaml_content=yaml_content,
+                content_hash=content_hash,
+                trust_level=tl,
+            )
+
+            # Persist to disk
+            archetypes_dir.mkdir(parents=True, exist_ok=True)
+            target.write_text(yaml_content, encoding="utf-8")
+
+            click.echo(f"✓ Installed '{entry.archetype.id}' v{entry.archetype.version}")
+            click.echo(f"  Location:   {target}")
+            click.echo(f"  Trust:      {tl.value}")
+            click.echo(f"  Hash:       {content_hash[:16]}…")
+            click.echo(f"\n  Use: agentguard generate -a {entry.archetype.id} \"your spec\"")
+        except Exception as e:
+            click.echo(f"✗ Installation failed: {e}", err=True)
+            sys.exit(1)
+        finally:
+            await client.close()
+
+    asyncio.run(_run())
+
+
+# ── Uninstall archetype ───────────────────────────────────────────
+
+
+@main.command(name="uninstall")
+@click.argument("slug")
+def uninstall_archetype(slug: str) -> None:
+    """Remove a previously installed marketplace archetype.
+
+    SLUG is the archetype identifier (e.g. "my-archetype").
+    """
+    archetypes_dir = Path.home() / ".agentguard" / "archetypes"
+    target = archetypes_dir / f"{slug}.yaml"
+
+    if not target.exists():
+        click.echo(f"✗ Archetype '{slug}' is not installed.")
+        sys.exit(1)
+
+    target.unlink()
+    click.echo(f"✓ Uninstalled archetype '{slug}'")
+
+    # Clear license cache entry
+    try:
+        from agentguard.platform.license_cache import LicenseCache
+
+        LicenseCache().remove(slug)
+    except Exception:
+        pass
+
+
+def _require_httpx() -> None:
+    """Exit with a helpful message if httpx is not installed."""
+    try:
+        import httpx  # noqa: F401
+    except ImportError:
+        click.echo(
+            '✗ httpx not installed — run: pip install "rlabs-agentguard[platform]"',
+            err=True,
+        )
+        sys.exit(1)
+
+
+def _validate_platform_key(key: str) -> None:
+    """Validate a platform API key against the platform API before starting the server."""
+    try:
+        import httpx  # noqa: F401
+    except ImportError:
+        click.echo(
+            "\u26a0 httpx not installed \u2014 skipping platform key validation",
+            err=True,
+        )
+        return
+
+    from agentguard.platform.client import PlatformClient
+    from agentguard.platform.config import load_config
+
+    cfg = load_config()
+    cfg.api_key = key
+
+    client = PlatformClient(cfg)
+
+    async def _check() -> None:
+        try:
+            info = await client.validate_api_key()
+            click.echo(
+                f"✓ Platform key valid — {info.get('email', '?')} "
+                f"(tier: {info.get('tier', '?')})"
+            )
+        except Exception as e:
+            click.echo(f"✗ Platform key validation failed: {e}", err=True)
+            sys.exit(1)
+        finally:
+            await client.close()
+
+    asyncio.run(_check())
 
 
 if __name__ == "__main__":

@@ -1,4 +1,7 @@
-"""PlatformClient — async HTTP client for reporting usage to the AgentGuard platform."""
+"""PlatformClient — async HTTP client for the AgentGuard platform.
+
+Handles usage telemetry reporting and marketplace / license operations.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agentguard.platform.config import PlatformConfig
+    from agentguard.platform.license_cache import LicenseCache
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,7 @@ class PlatformClient:
         self._http: Any = None  # Lazy httpx.AsyncClient
         self._flush_task: asyncio.Task[None] | None = None
         self._closed = False
+        self._license_cache: LicenseCache | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -249,6 +254,113 @@ class PlatformClient:
             success=passed,
             metadata_json={"rework_attempts": rework_attempts} if rework_attempts else None,
         )
+
+    # ── Marketplace ─────────────────────────────────────────────
+
+    async def search_marketplace(
+        self,
+        *,
+        query: str | None = None,
+        category: str | None = None,
+        sort: str = "popular",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """Search / browse published marketplace archetypes.
+
+        Returns the JSON response dict with ``items``, ``total``, ``page``,
+        ``page_size`` keys.  No authentication required.
+        """
+        client = await self._get_http()
+        url = f"{self._config.platform_url.rstrip('/')}/api/marketplace/archetypes"
+        params: dict[str, Any] = {"sort": sort, "page": page, "page_size": page_size}
+        if query:
+            params["q"] = query
+        if category:
+            params["category"] = category
+
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+    async def get_archetype_detail(self, slug: str) -> dict[str, Any]:
+        """Fetch full detail of a marketplace archetype (including YAML if authorized)."""
+        client = await self._get_http()
+        url = f"{self._config.platform_url.rstrip('/')}/api/marketplace/archetypes/{slug}"
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+    async def download_archetype(self, slug: str) -> dict[str, Any]:
+        """Download the YAML content of a marketplace archetype.
+
+        Requires a valid API key.  For paid archetypes the user must own
+        a purchase.
+
+        Returns a dict with ``yaml_content``, ``content_hash``, ``trust_level``,
+        ``slug``, ``name``, ``version``.
+        """
+        client = await self._get_http()
+        url = f"{self._config.platform_url.rstrip('/')}/api/engine/archetypes/{slug}/download"
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+    # ── License ──────────────────────────────────────────────────
+
+    @property
+    def license_cache(self) -> LicenseCache:
+        """Lazy-init the local license cache."""
+        if self._license_cache is None:
+            from agentguard.platform.license_cache import LicenseCache as _LC
+
+            self._license_cache = _LC()
+        return self._license_cache
+
+    async def check_license(self, slug: str, *, use_cache: bool = True) -> dict[str, Any]:
+        """Check if the current user is licensed to use an archetype.
+
+        Uses a local 24-hour cache by default to avoid excessive API calls.
+
+        Returns ``{"slug": ..., "licensed": bool, "reason": ...}``.
+        """
+        # Check local cache first
+        if use_cache:
+            cached = self.license_cache.get(slug)
+            if cached is not None:
+                return {"slug": cached.slug, "licensed": cached.licensed, "reason": cached.reason}
+
+        # Call platform API
+        client = await self._get_http()
+        url = f"{self._config.platform_url.rstrip('/')}/api/engine/license/{slug}"
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+
+        # Cache the result
+        self.license_cache.set(
+            slug,
+            licensed=data.get("licensed", False),
+            reason=data.get("reason", ""),
+        )
+
+        return data
+
+    # ── API key validation ───────────────────────────────────────
+
+    async def validate_api_key(self) -> dict[str, Any]:
+        """Validate the configured API key against the platform.
+
+        Returns user info dict on success (``valid``, ``user_id``,
+        ``email``, ``tier``, ``name``).
+
+        Raises ``httpx.HTTPStatusError`` on 401/403.
+        """
+        client = await self._get_http()
+        url = f"{self._config.platform_url.rstrip('/')}/api/engine/validate"
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
 
     # ── Timing helper ─────────────────────────────────────────
 
