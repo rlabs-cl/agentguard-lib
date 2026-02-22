@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+import importlib.util
 import time
 from pathlib import Path
 from typing import Any
@@ -514,6 +515,10 @@ class TestCLIServeValidation:
 class TestEngineRouterImport:
     """Verify engine router can be imported without errors."""
 
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("app"),
+        reason="Platform API package not available in library-only CI",
+    )
     def test_import_engine_router(self) -> None:
         """Ensure the engine router module loads cleanly."""
         from app.routers.engine import router
