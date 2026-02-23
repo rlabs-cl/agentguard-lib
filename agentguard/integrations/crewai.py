@@ -158,4 +158,4 @@ def agentguard_benchmark(
     runner = BenchmarkRunner(archetype=archetype, config=config)
 
     report = _run_async(runner.run())
-    return report.to_json()
+    return str(report.to_json())
