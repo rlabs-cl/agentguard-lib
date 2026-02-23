@@ -132,7 +132,9 @@ async def agentguard_benchmark_node(state: dict[str, Any]) -> dict[str, Any]:
 
     Reads from state:
         - ``archetype`` (str, optional): Archetype name. Default: ``"api_backend"``.
-        - ``llm`` (str, optional): LLM model string. Default: ``"anthropic/claude-sonnet-4-20250514"``.
+        - ``llm`` (str, optional): LLM model string.  If the graph already
+          has an LLM configured, pass it via state so the benchmark reuses
+          it instead of requiring a separate API key.
         - ``benchmark_category`` (str, optional): Catalog category.
         - ``benchmark_budget`` (float, optional): Budget ceiling in USD. Default: 10.0.
 
@@ -146,13 +148,13 @@ async def agentguard_benchmark_node(state: dict[str, Any]) -> dict[str, Any]:
     from agentguard.benchmark.types import BenchmarkConfig
 
     archetype = state.get("archetype", "api_backend")
-    llm = state.get("llm", "anthropic/claude-sonnet-4-20250514")
+    llm = state.get("llm", "")
     category = state.get("benchmark_category", archetype)
     budget = state.get("benchmark_budget", 10.0)
 
     specs = get_default_specs(category)
-    config = BenchmarkConfig(model=llm, specs=specs, budget_ceiling_usd=budget)
-    runner = BenchmarkRunner(archetype=archetype, config=config)
+    config = BenchmarkConfig(specs=specs, model=llm, budget_ceiling_usd=budget)
+    runner = BenchmarkRunner(archetype=archetype, config=config, llm=llm or None)
 
     report = await runner.run()
 

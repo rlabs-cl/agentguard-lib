@@ -138,14 +138,13 @@ class TestComplexityRun:
 
 
 class TestBenchmarkConfig:
-    def test_validate_empty_model(self) -> None:
-        config = BenchmarkConfig(model="")
+    def test_validate_empty_specs(self) -> None:
+        config = BenchmarkConfig()
         errors = config.validate()
-        assert any("Model" in e for e in errors)
+        assert any("At least one benchmark spec" in e for e in errors)
 
     def test_validate_missing_complexity_levels(self) -> None:
         config = BenchmarkConfig(
-            model="anthropic/claude-sonnet-4-20250514",
             specs=[BenchmarkSpec(Complexity.TRIVIAL, "test", "general")],
         )
         errors = config.validate()
@@ -153,7 +152,7 @@ class TestBenchmarkConfig:
 
     def test_validate_all_levels_covered(self) -> None:
         specs = [BenchmarkSpec(c, f"test {c}", "general") for c in ALL_COMPLEXITIES]
-        config = BenchmarkConfig(model="anthropic/claude-sonnet-4-20250514", specs=specs)
+        config = BenchmarkConfig(specs=specs)
         errors = config.validate()
         assert len(errors) == 0
 

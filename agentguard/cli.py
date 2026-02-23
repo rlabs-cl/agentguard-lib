@@ -325,14 +325,15 @@ def benchmark_cmd(
     specs = get_default_specs(str(cat))
 
     config = BenchmarkConfig(
-        model=model,
         specs=specs,
+        model=model,
         budget_ceiling_usd=budget,
     )
 
     runner = BenchmarkRunner(
         archetype=arch_arg,
         config=config,
+        llm=model,
         signing_secret=secret or "",
     )
 

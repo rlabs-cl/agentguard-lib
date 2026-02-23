@@ -193,7 +193,7 @@ async def agentguard_trace_summary(trace_id: str | None = None) -> str:
 
 async def agentguard_benchmark(
     archetype: str = "api_backend",
-    model: str = "anthropic/claude-sonnet-4-20250514",
+    model: str = "",
     category: str | None = None,
     budget: float = 10.0,
 ) -> str:
@@ -202,6 +202,11 @@ async def agentguard_benchmark(
     Generates code WITH and WITHOUT AgentGuard across 5 complexity levels,
     evaluating enterprise and operational readiness. Returns the full
     benchmark report as JSON.
+
+    Note: ``model`` is optional — if omitted, falls back to the model
+    string configured on the pipeline / server.  When calling from an
+    agent that already has an LLM, prefer the agent-native
+    ``benchmark`` + ``benchmark_evaluate`` tools instead.
     """
     from agentguard.benchmark.catalog import get_default_specs
     from agentguard.benchmark.runner import BenchmarkRunner
@@ -209,7 +214,7 @@ async def agentguard_benchmark(
 
     cat = category or archetype
     specs = get_default_specs(cat)
-    config = BenchmarkConfig(model=model, specs=specs, budget_ceiling_usd=budget)
-    runner = BenchmarkRunner(archetype=archetype, config=config)
+    config = BenchmarkConfig(specs=specs, model=model, budget_ceiling_usd=budget)
+    runner = BenchmarkRunner(archetype=archetype, config=config, llm=model or None)
     report = await runner.run()
     return report.to_json()

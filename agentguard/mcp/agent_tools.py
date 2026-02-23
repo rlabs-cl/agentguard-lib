@@ -566,54 +566,178 @@ async def agentguard_digest(
     )
 
 
-# ── 8. benchmark ────────────────────────────────────────────────────
+# ── 8. benchmark (agent-native, two-step) ─────────────────────────
 
 async def agentguard_benchmark(
     archetype: str = "api_backend",
-    model: str = "anthropic/claude-sonnet-4-20250514",
     category: str | None = None,
-    budget: float = 10.0,
 ) -> str:
-    """Run a comparative benchmark for an archetype (no API key needed).
+    """Get benchmark specs for comparative evaluation (no API key needed).
 
-    Generates code WITH and WITHOUT AgentGuard across 5 complexity levels,
-    evaluating enterprise and operational readiness. Returns the full
-    benchmark report as JSON.
+    Returns 5 development specifications (one per complexity level) that the
+    calling agent should implement **twice** each:
+
+    1. **Control** — generate code for the spec directly (raw LLM, no tools).
+    2. **Treatment** — generate code using the AgentGuard workflow
+       (skeleton → contracts_and_wiring → logic → validate).
+
+    Once both sets are generated, call ``benchmark_evaluate`` with the
+    results to get scored readiness reports.
 
     Args:
         archetype: Project archetype name or ID.
-        model: LLM model string (e.g. "anthropic/claude-sonnet-4-20250514").
-        category: Catalog category for specs (defaults to archetype name).
-        budget: Maximum budget in USD for all runs.
+        category: Catalog category for spec lookup (defaults to archetype name).
 
     Returns:
-        JSON benchmark report with per-complexity results, readiness scores,
-        and an overall pass/fail verdict.
+        JSON with benchmark specs and instructions for the agent.
     """
     from agentguard.benchmark.catalog import get_default_specs
-    from agentguard.benchmark.runner import BenchmarkRunner
-    from agentguard.benchmark.types import BenchmarkConfig
 
     cat = category or archetype
     specs = get_default_specs(cat)
-    config = BenchmarkConfig(model=model, specs=specs, budget_ceiling_usd=budget)
-    runner = BenchmarkRunner(archetype=archetype, config=config)
-    report = await runner.run()
+
+    spec_list = [
+        {
+            "complexity": s.complexity.value,
+            "spec": s.spec,
+            "category": s.category,
+        }
+        for s in specs
+    ]
 
     return json.dumps(
         {
             "tool": "agentguard_benchmark",
             "description": (
-                "Comparative benchmark: raw LLM vs AgentGuard pipeline "
-                f"across {len(report.runs)} complexity levels."
+                "Comparative benchmark: generate code WITH and WITHOUT "
+                "AgentGuard tools, then evaluate both with benchmark_evaluate."
+            ),
+            "archetype": archetype,
+            "total_specs": len(spec_list),
+            "specs": spec_list,
+            "instructions": {
+                "control": (
+                    "For each spec, generate production code directly from "
+                    "the spec text alone (no AgentGuard tools). Return the "
+                    "files as a dict mapping filepath → content."
+                ),
+                "treatment": (
+                    "For each spec, use the full AgentGuard workflow: "
+                    "skeleton → contracts_and_wiring → logic → validate. "
+                    "Return the files as a dict mapping filepath → content."
+                ),
+                "evaluate": (
+                    "Once you have control and treatment file dicts for all "
+                    "specs, call `benchmark_evaluate` with the results."
+                ),
+            },
+            "next_step": (
+                "Start with the first spec. Generate CONTROL code (no tools), "
+                "then TREATMENT code (with AgentGuard tools). Repeat for each "
+                "spec, then call `benchmark_evaluate` with all results."
+            ),
+        },
+        indent=2,
+    )
+
+
+async def agentguard_benchmark_evaluate(
+    archetype: str = "api_backend",
+    results_json: str = "[]",
+) -> str:
+    """Evaluate benchmark results — score control vs treatment code.
+
+    No API key needed — scoring is pure static analysis (AST-based).
+
+    Accepts the generated code from both control and treatment runs across
+    all complexity levels, evaluates enterprise and operational readiness,
+    and returns a full scored report.
+
+    Args:
+        archetype: The archetype used for the benchmark.
+        results_json: JSON array of objects, each with:
+            - ``complexity``: "trivial" | "low" | "medium" | "high" | "enterprise"
+            - ``spec``: The original spec text.
+            - ``control_files``: dict of filepath → content (raw LLM output).
+            - ``treatment_files``: dict of filepath → content (AgentGuard output).
+
+    Returns:
+        JSON benchmark report with per-dimension scores and overall verdict.
+    """
+    from agentguard.benchmark.evaluator import (
+        evaluate_enterprise,
+        evaluate_operational,
+    )
+    from agentguard.benchmark.report import (
+        format_report_compact,
+        format_report_markdown,
+    )
+    from agentguard.benchmark.types import (
+        BenchmarkReport,
+        Complexity,
+        ComplexityRun,
+        RunResult,
+    )
+
+    results = json.loads(results_json)
+    runs: list[ComplexityRun] = []
+
+    for entry in results:
+        complexity = Complexity(entry["complexity"])
+        spec = entry["spec"]
+        control_files: dict[str, str] = entry.get("control_files", {})
+        treatment_files: dict[str, str] = entry.get("treatment_files", {})
+
+        # Evaluate control
+        ctrl_ent = evaluate_enterprise(control_files)
+        ctrl_ops = evaluate_operational(control_files)
+        ctrl_lines = sum(c.count("\n") + 1 for c in control_files.values()) if control_files else 0
+        control = RunResult(
+            enterprise=ctrl_ent,
+            operational=ctrl_ops,
+            files_generated=len(control_files),
+            total_lines=ctrl_lines,
+        )
+
+        # Evaluate treatment
+        treat_ent = evaluate_enterprise(treatment_files)
+        treat_ops = evaluate_operational(treatment_files)
+        treat_lines = sum(c.count("\n") + 1 for c in treatment_files.values()) if treatment_files else 0
+        treatment = RunResult(
+            enterprise=treat_ent,
+            operational=treat_ops,
+            files_generated=len(treatment_files),
+            total_lines=treat_lines,
+        )
+
+        runs.append(ComplexityRun(
+            complexity=complexity,
+            spec=spec,
+            control=control,
+            treatment=treatment,
+        ))
+
+    report = BenchmarkReport(
+        archetype_id=archetype,
+        model="agent-native",
+        runs=runs,
+    )
+
+    return json.dumps(
+        {
+            "tool": "agentguard_benchmark_evaluate",
+            "description": (
+                f"Scored {len(runs)} complexity levels. "
+                f"{'PASSED' if report.overall_passed else 'FAILED'}."
             ),
             "overall_passed": report.overall_passed,
             "summary": {
                 "enterprise_avg": round(report.enterprise_avg, 3),
                 "operational_avg": round(report.operational_avg, 3),
                 "improvement_avg": round(report.improvement_avg, 3),
-                "total_cost_usd": round(report.total_cost_usd, 4),
             },
+            "compact": format_report_compact(report),
+            "markdown": format_report_markdown(report),
             "report": report.to_dict(),
         },
         indent=2,

@@ -158,10 +158,16 @@ class BenchmarkSpec:
 
 @dataclass
 class BenchmarkConfig:
-    """Configuration for a benchmark run."""
+    """Configuration for a benchmark run.
 
-    model: str                                # e.g. "anthropic/claude-sonnet-4-20250514"
+    ``model`` is metadata only (used in the report).  The actual LLM
+    instance is passed to ``BenchmarkRunner`` directly — this means
+    callers who already have an LLM (MCP agents, framework integrations)
+    never need an extra API key.
+    """
+
     specs: list[BenchmarkSpec] = field(default_factory=list)
+    model: str = ""                           # Informational — written into the report
     budget_ceiling_usd: float = 10.0          # Max total spend
     enterprise_threshold: float = 0.6         # Min enterprise score to pass
     operational_threshold: float = 0.6        # Min operational score to pass
@@ -171,8 +177,6 @@ class BenchmarkConfig:
     def validate(self) -> list[str]:
         """Return list of validation errors, empty if config is valid."""
         errors: list[str] = []
-        if not self.model:
-            errors.append("Model is required")
         if not self.specs:
             errors.append("At least one benchmark spec is required")
 
@@ -206,8 +210,19 @@ class BenchmarkReport:
     created_at: str = ""
     signature: str = ""            # HMAC-SHA256
 
-    def compute_aggregates(self) -> None:
-        """Recompute averages from runs."""
+    def __post_init__(self) -> None:
+        """Auto-compute aggregates when runs are provided at init."""
+        if self.runs:
+            self.compute_aggregates()
+
+    def compute_aggregates(
+        self,
+        *,
+        enterprise_threshold: float = 0.6,
+        operational_threshold: float = 0.6,
+        improvement_threshold: float = 0.05,
+    ) -> None:
+        """Recompute averages from runs and set overall_passed."""
         if not self.runs:
             return
         n = len(self.runs)
@@ -220,6 +235,11 @@ class BenchmarkReport:
         ) / n
         self.total_cost_usd = sum(
             r.control.cost_usd + r.treatment.cost_usd for r in self.runs
+        )
+        self.overall_passed = (
+            self.enterprise_avg >= enterprise_threshold
+            and self.operational_avg >= operational_threshold
+            and self.improvement_avg >= improvement_threshold
         )
 
     def to_dict(self) -> dict[str, Any]:

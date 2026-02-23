@@ -131,7 +131,7 @@ def agentguard_challenge(
 
 def agentguard_benchmark(
     archetype: str = "api_backend",
-    model: str = "anthropic/claude-sonnet-4-20250514",
+    model: str = "",
     category: str | None = None,
     budget: float = 10.0,
 ) -> str:
@@ -142,7 +142,8 @@ def agentguard_benchmark(
 
     Args:
         archetype: The project archetype name.
-        model: LLM model string.
+        model: LLM model string.  Optional — if the CrewAI agent already
+            has an LLM configured, pass its model string or leave empty.
         category: Catalog category (defaults to archetype name).
         budget: Maximum budget in USD.
 
@@ -154,8 +155,8 @@ def agentguard_benchmark(
     from agentguard.benchmark.types import BenchmarkConfig
 
     specs = get_default_specs(category or archetype)
-    config = BenchmarkConfig(model=model, specs=specs, budget_ceiling_usd=budget)
-    runner = BenchmarkRunner(archetype=archetype, config=config)
+    config = BenchmarkConfig(specs=specs, model=model, budget_ceiling_usd=budget)
+    runner = BenchmarkRunner(archetype=archetype, config=config, llm=model or None)
 
     report = _run_async(runner.run())
     return str(report.to_json())

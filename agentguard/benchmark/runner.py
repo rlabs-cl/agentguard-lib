@@ -10,6 +10,10 @@ For each benchmark spec the runner:
   3. Evaluates both outputs with the enterprise + operational evaluator.
   4. Records per-complexity results and computes deltas.
   5. Produces a signed BenchmarkReport.
+
+The runner accepts an ``LLMProvider`` (or model string) directly, so callers
+who already have an LLM — MCP agents, CrewAI/LangGraph/OpenHands — never
+need to supply a separate API key.
 """
 
 from __future__ import annotations
@@ -71,8 +75,22 @@ class BenchmarkRunner:
         archetype: Archetype | str,
         config: BenchmarkConfig,
         *,
+        llm: LLMProvider | str | None = None,
         signing_secret: str = "",
     ) -> None:
+        """Initialise a benchmark runner.
+
+        Args:
+            archetype: Archetype instance or built-in name.
+            config: Benchmark configuration (specs, thresholds, budget).
+            llm: LLM to use for control + treatment runs.  Accepts an
+                already-instantiated ``LLMProvider`` (no extra API key
+                needed) **or** a model string like
+                ``"anthropic/claude-sonnet-4-20250514"`` which will be
+                resolved via ``create_llm_provider``.  If *None*, falls
+                back to ``config.model`` (CLI convenience).
+            signing_secret: HMAC secret for report signing.
+        """
         from agentguard.archetypes.registry import get_archetype_registry
         from agentguard.llm.factory import create_llm_provider
 
@@ -89,7 +107,25 @@ class BenchmarkRunner:
             raise ValueError(f"Invalid benchmark config: {'; '.join(errors)}")
 
         self._config = config
-        self._llm: LLMProvider = create_llm_provider(config.model)
+
+        # Resolve LLM: direct provider > model string > config.model
+        if isinstance(llm, str):
+            self._llm: LLMProvider = create_llm_provider(llm)
+            # Store model label for the report
+            if not config.model:
+                config.model = llm
+        elif llm is not None:
+            self._llm = llm
+            if not config.model:
+                config.model = getattr(llm, "model", "unknown")
+        elif config.model:
+            self._llm = create_llm_provider(config.model)
+        else:
+            raise ValueError(
+                "No LLM provided.  Pass an LLMProvider instance, a model "
+                "string, or set config.model."
+            )
+
         self._secret = signing_secret
         self._total_cost: float = 0.0
 
@@ -283,14 +319,16 @@ class BenchmarkRunner:
             runs=runs,
             created_at=datetime.now(UTC).isoformat(),
         )
-        report.compute_aggregates()
+        report.compute_aggregates(
+            enterprise_threshold=self._config.enterprise_threshold,
+            operational_threshold=self._config.operational_threshold,
+            improvement_threshold=self._config.improvement_threshold,
+        )
 
-        # Determine pass/fail
+        # Additional pass condition: all levels must complete
         report.overall_passed = (
-            report.enterprise_avg >= self._config.enterprise_threshold
-            and report.operational_avg >= self._config.operational_threshold
-            and report.improvement_avg >= self._config.improvement_threshold
-            and len(runs) == len(self._config.specs)  # All levels completed
+            report.overall_passed
+            and len(runs) == len(self._config.specs)
         )
 
         # Sign if secret provided

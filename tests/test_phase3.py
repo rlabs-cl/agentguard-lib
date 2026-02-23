@@ -419,7 +419,7 @@ class TestMCPConfiguration:
         assert "challenge" in tool_names
         # Benchmark tool
         assert "benchmark" in tool_names
-        assert len(tool_names) == 14
+        assert len(tool_names) == 15
 
 
 # ================================================================== #

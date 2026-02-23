@@ -181,9 +181,11 @@ class AgentGuardMicroAgent:
 
         specs = get_default_specs(archetype)
         config = BenchmarkConfig(
-            model=self.llm, specs=specs, budget_ceiling_usd=budget,
+            specs=specs, model=self.llm, budget_ceiling_usd=budget,
         )
-        runner = BenchmarkRunner(archetype=archetype, config=config)
+        runner = BenchmarkRunner(
+            archetype=archetype, config=config, llm=self.llm,
+        )
         report = await runner.run()
         return MicroAgentResult(
             action="benchmark",

@@ -46,6 +46,7 @@ def _create_mcp_server() -> Any:
 
     from agentguard.mcp.agent_tools import (
         agentguard_benchmark,
+        agentguard_benchmark_evaluate,
         agentguard_contracts,
         agentguard_contracts_and_wiring,
         agentguard_digest,
@@ -153,16 +154,27 @@ def _create_mcp_server() -> Any:
     @mcp.tool()
     async def benchmark(
         archetype: str = "api_backend",
-        model: str = "anthropic/claude-sonnet-4-20250514",
         category: str | None = None,
-        budget: float = 10.0,
     ) -> str:
-        """[Requires API key] Comparative benchmark: raw LLM vs AgentGuard pipeline.
-        Runs the same specs at 5 complexity levels, scoring enterprise and
-        operational readiness for both control and treatment. Returns a JSON
-        report with per-dimension scores and an overall pass/fail verdict."""
+        """Get benchmark specs for comparative evaluation (no API key needed).
+        Returns 5 development specifications at different complexity levels.
+        Generate code for each spec WITH and WITHOUT AgentGuard tools,
+        then call `benchmark_evaluate` with the results."""
         return await agentguard_benchmark(
-            archetype=archetype, model=model, category=category, budget=budget,
+            archetype=archetype, category=category,
+        )
+
+    @mcp.tool()
+    async def benchmark_evaluate(
+        archetype: str = "api_backend",
+        results_json: str = "[]",
+    ) -> str:
+        """Score control vs treatment code from a benchmark run (no API key needed).
+        Accepts generated code from both paths, runs static-analysis scoring
+        across enterprise and operational readiness dimensions, and returns
+        a full report with per-dimension scores and overall verdict."""
+        return await agentguard_benchmark_evaluate(
+            archetype=archetype, results_json=results_json,
         )
 
     # ── Utility tools (pure computation, no LLM) ──────────────────
