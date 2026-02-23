@@ -15,10 +15,12 @@ This document describes how to publish new versions of AgentGuard to **PyPI** (P
    |---|---|
    | PyPI project name | `rlabs-agentguard` |
    | Owner | `rlabs-cl` |
-   | Repository | `AgentGuard` |
+   | Repository | `agentguard-lib` |
    | Workflow name | `publish-pypi.yml` |
    | Environment name | `pypi` |
 4. Save — GitHub Actions will authenticate via OIDC (no API token needed)
+
+> **Note**: The trusted publisher is configured on the **public mirror** repo (`agentguard-lib`), not the monorepo. The `Sync Library` workflow pushes library changes to the mirror automatically.
 
 > **Optional**: repeat for Test PyPI at [test.pypi.org](https://test.pypi.org) with environment name `testpypi`.
 
@@ -50,48 +52,56 @@ You can add manual approval requirements on each environment for extra safety.
 
 ```bash
 # 1. Bump the version in TWO places (keep them in sync):
-#    - pyproject.toml   →  version = "0.2.0"
-#    - agentguard/_version.py  →  __version__ = "0.2.0"
+#    - pyproject.toml   →  version = "0.3.0"
+#    - agentguard/_version.py  →  __version__ = "0.3.0"
 
 # 2. Commit the version bump
 git add pyproject.toml agentguard/_version.py
-git commit -m "release: v0.2.0"
+git commit -m "release: bump library to v0.3.0"
 
-# 3. Tag it (must match pattern v*)
-git tag v0.2.0
+# 3. Push to main (do NOT create tag on the monorepo)
+git push origin main
 
-# 4. Push commit + tag
-git push origin main --tags
+# 4. Wait for the Sync Library workflow to push changes to agentguard-lib
+#    This happens automatically on every push to main.
 
-# 5. Go to GitHub → Releases → "Create a new release"
-#    - Choose tag: v0.2.0
-#    - Title: v0.2.0
-#    - Auto-generate release notes or write your own
-#    - Click "Publish release"
-#    → The publish-pypi.yml workflow runs automatically
+# 5. Create a GitHub Release on the PUBLIC MIRROR (agentguard-lib)
+#    The Sync Library workflow does NOT push tags. You must create them
+#    on the mirror repo directly.
+gh release create v0.3.0 \
+  --repo rlabs-cl/agentguard-lib \
+  --title "v0.3.0" \
+  --generate-notes
+
+#    → The publish-pypi.yml workflow on agentguard-lib triggers automatically
+#      (it fires on the `release: [published]` event, not on tag push)
 ```
 
 After ~2 minutes, your package is live at:
 - https://pypi.org/project/rlabs-agentguard/
 - Install: `pip install rlabs-agentguard`
 
+> **Important**: Tags and releases must be created on `agentguard-lib` (the public mirror), not on the monorepo. The `Sync Library` workflow uses `git subtree push` which does not sync tags.
+
 ### TypeScript SDK → npm
 
 ```bash
 # 1. Bump the version in sdks/typescript/package.json
-#    "version": "0.2.0"
+#    "version": "0.3.0"
 
 # 2. Commit
 git add sdks/typescript/package.json
-git commit -m "release: sdk-v0.2.0"
+git commit -m "release: sdk-v0.3.0"
 
-# 3. Tag it (must start with sdk-v to trigger the npm workflow)
-git tag sdk-v0.2.0
+# 3. Push to main, wait for Sync Library
+git push origin main
 
-# 4. Push
-git push origin main --tags
+# 4. Create release on agentguard-lib (tag must start with sdk-v)
+gh release create sdk-v0.3.0 \
+  --repo rlabs-cl/agentguard-lib \
+  --title "sdk-v0.3.0" \
+  --generate-notes
 
-# 5. Create a GitHub Release from the sdk-v0.2.0 tag
 #    → The publish-npm.yml workflow runs automatically
 ```
 
@@ -108,16 +118,14 @@ If you're bumping both Python and TypeScript:
 ```bash
 # Bump both versions, commit together
 git add pyproject.toml agentguard/_version.py sdks/typescript/package.json
-git commit -m "release: v0.2.0 + sdk-v0.2.0"
+git commit -m "release: v0.3.0 + sdk-v0.3.0"
 
-# Create both tags
-git tag v0.2.0
-git tag sdk-v0.2.0
+# Push to main
+git push origin main
 
-# Push everything
-git push origin main --tags
-
-# Create TWO GitHub Releases: one for v0.2.0, one for sdk-v0.2.0
+# Wait for Sync Library, then create TWO releases on agentguard-lib:
+gh release create v0.3.0 --repo rlabs-cl/agentguard-lib --title "v0.3.0" --generate-notes
+gh release create sdk-v0.3.0 --repo rlabs-cl/agentguard-lib --title "sdk-v0.3.0" --generate-notes
 ```
 
 ---
@@ -138,10 +146,10 @@ Every push to `main` and every pull request runs the **CI workflow** ([ci.yml](.
 # Build locally
 pip install build
 python -m build
-# Produces dist/rlabs_agentguard-0.1.0.tar.gz + rlabs_agentguard-0.1.0-py3-none-any.whl
+# Produces dist/rlabs_agentguard-0.3.0.tar.gz + rlabs_agentguard-0.3.0-py3-none-any.whl
 
 # Test install from the wheel
-pip install dist/rlabs_agentguard-0.1.0-py3-none-any.whl
+pip install dist/rlabs_agentguard-0.3.0-py3-none-any.whl
 agentguard --version
 ```
 
@@ -160,10 +168,10 @@ npm publish --dry-run
 
 ## Version scheme
 
-| Component | Tag pattern | Example | Trigger |
-|---|---|---|---|
-| Python package | `v*` | `v0.2.0` | `publish-pypi.yml` |
-| TypeScript SDK | `sdk-v*` | `sdk-v0.2.0` | `publish-npm.yml` |
+| Component | Tag pattern | Example | Trigger | Repo |
+|---|---|---|---|---|
+| Python package | `v*` | `v0.3.0` | `publish-pypi.yml` | `agentguard-lib` |
+| TypeScript SDK | `sdk-v*` | `sdk-v0.3.0` | `publish-npm.yml` | `agentguard-lib` |
 
 Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 

@@ -133,6 +133,7 @@ agentguard challenge src/main.py --criteria "No hardcoded secrets" --criteria "E
 | `agentguard generate SPEC` | Generate a full project from a natural-language spec |
 | `agentguard validate FILES...` | Run structural checks on code files |
 | `agentguard challenge FILE` | Self-challenge a file against quality criteria |
+| `agentguard benchmark` | Run a comparative benchmark (WITH vs WITHOUT AgentGuard) |
 | `agentguard serve` | Start the HTTP API server (default port 8420) |
 | `agentguard mcp-serve` | Start the MCP server (stdio or SSE transport) |
 | `agentguard list` | List available archetypes |
@@ -286,7 +287,7 @@ No API key is needed for the agent-native tools — the host LLM does all the ge
 
 #### MCP Tools Reference
 
-The MCP server exposes **13 tools** in two categories:
+The MCP server exposes **15 tools** in three categories:
 
 **Agent-native tools (no API key needed — the host LLM does the work):**
 
@@ -303,6 +304,13 @@ The MCP server exposes **13 tools** in two categories:
 | `list_archetypes` | Info | Names and descriptions of all available archetypes |
 | `get_archetype` | Info | Full archetype config: tech stack, validation rules, challenge criteria, infrastructure files |
 | `trace_summary` | Info | Summary of the last generation: LLM calls, tokens, cost |
+
+**Benchmark tools (no API key needed — pure static analysis):**
+
+| Tool | What It Does |
+|------|-------------|
+| `benchmark` | Returns 5 benchmark specs (one per complexity level) for comparative evaluation — the agent generates code WITH and WITHOUT AgentGuard tools |
+| `benchmark_evaluate` | Scores control vs treatment code across 13 readiness dimensions (7 enterprise + 6 operational) using AST-based static analysis |
 
 **Full-pipeline tools (require a separate LLM API key configured on the server):**
 
@@ -350,8 +358,111 @@ AgentGuard integrates with your existing tooling — it's not a framework, it's 
 | **Context Recipes** | Right context, right amount, right time — anti-hallucination | ✅ |
 | **Archetypes** | Project blueprints that configure the entire pipeline | ✅ |
 | **Tracing** | Every LLM call tracked with cost, tokens, and quality metrics | ✅ |
+| **Benchmark** | Comparative quality assessment: WITH vs WITHOUT AgentGuard | ✅ |
 
 Every module works independently. Use the full pipeline or pick individual pieces.
+
+---
+
+## Benchmark System
+
+AgentGuard includes a built-in **comparative benchmark** that measures the quality difference between code generated WITH and WITHOUT the AgentGuard pipeline. It generates the same project both ways, then scores both outputs across **13 readiness dimensions** using pure static analysis (AST-based — no LLM needed for scoring).
+
+### How It Works
+
+1. **5 complexity levels** — trivial, low, medium, high, enterprise
+2. **Control run** — generate code from the spec directly (raw LLM, no AgentGuard tools)
+3. **Treatment run** — generate code using the full AgentGuard workflow (skeleton → contracts → wiring → logic → validate)
+4. **Score both** — 7 enterprise dimensions + 6 operational dimensions, each 0.0–1.0
+5. **Report** — per-complexity scores, improvement deltas, and overall pass/fail verdict
+
+### Readiness Dimensions
+
+**Enterprise readiness (7 dimensions):**
+type safety, modularity, maintainability, accessibility, performance, observability, testability
+
+**Operational readiness (6 dimensions):**
+debuggability, feature extensibility, cloud scalability, API migration cost, test surface, team onboarding
+
+### CLI Usage
+
+```bash
+# Run a benchmark for an archetype (requires LLM API key for code generation)
+agentguard benchmark -a api_backend
+agentguard benchmark -a api_backend -m openai/gpt-4o --budget 5.0
+
+# Custom archetype file, with report output
+agentguard benchmark -a ./my-archetype.yaml -o report.json --markdown report.md
+
+# Sign the report for marketplace publishing
+agentguard benchmark -a api_backend --secret "my-signing-key"
+```
+
+### Python API
+
+```python
+from agentguard.benchmark import BenchmarkRunner, BenchmarkConfig
+from agentguard.benchmark.catalog import get_default_specs
+
+config = BenchmarkConfig(
+    specs=get_default_specs("backend"),
+    model="anthropic/claude-sonnet-4-20250514",   # metadata only
+)
+
+# Pass LLM directly — no separate API key config needed
+runner = BenchmarkRunner(
+    archetype="api_backend",
+    config=config,
+    llm="anthropic/claude-sonnet-4-20250514",
+)
+report = await runner.run()
+
+# Sign and export
+report.sign(secret="my-signing-key")
+print(report.to_json())
+```
+
+### MCP / Agent-Native Usage (no API key needed)
+
+When the host is already an LLM (Claude Desktop, Cursor, etc.), the benchmark runs as a **two-step agent-native flow**:
+
+1. **`benchmark`** — returns 5 specs. The agent generates code for each spec twice: once raw (control), once with AgentGuard tools (treatment).
+2. **`benchmark_evaluate`** — the agent passes both code sets. Scoring is pure static analysis — AST-based, zero LLM calls.
+
+```
+LLM calls: benchmark(archetype="api_backend")
+       →  Returns 5 specs at different complexity levels
+
+LLM:   For each spec, generates CONTROL code (no tools) and
+       TREATMENT code (using skeleton → contracts_and_wiring → logic)
+
+LLM calls: benchmark_evaluate(archetype="api_backend", results_json=...)
+       →  Returns scored report with 13 dimensions and overall verdict
+```
+
+### Framework Integrations
+
+All framework integrations pass through the host LLM automatically:
+
+```python
+# CrewAI — benchmark tool available as a CrewAI tool
+from agentguard.integrations.crewai import agentguard_benchmark
+
+# LangGraph — benchmark node in a StateGraph
+from agentguard.integrations.langgraph import agentguard_benchmark_node
+
+# OpenHands — benchmark method on the micro-agent
+agent._benchmark(archetype="api_backend")
+```
+
+### HMAC-Signed Reports
+
+Benchmark reports are HMAC-SHA256 signed for tamper-proof verification — required for archetype marketplace publishing:
+
+```python
+report.sign(secret="my-signing-key")
+assert report.verify(secret="my-signing-key")
+```
 
 ---
 
