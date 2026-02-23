@@ -322,7 +322,7 @@ def benchmark_cmd(
         cat = category or archetype
 
     # Build default specs from catalog
-    specs = get_default_specs(cat)
+    specs = get_default_specs(str(cat))
 
     config = BenchmarkConfig(
         model=model,

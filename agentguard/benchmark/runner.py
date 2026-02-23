@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import time as _time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 # Type alias for the progress callback.
-_ProgressCB = Callable[..., object]
+_ProgressCB = Callable[..., Awaitable[None]]
 
 # Minimal system prompt for the control (raw LLM) run.
 _CONTROL_SYSTEM = (
