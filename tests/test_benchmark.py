@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
-# ══════════════════════════════════════════════════════════════════
-#  Types
-# ══════════════════════════════════════════════════════════════════
-
+from agentguard.benchmark.catalog import (
+    BENCHMARK_CATALOG,
+    get_default_specs,
+    get_specs_for_category,
+)
+from agentguard.benchmark.evaluator import evaluate_enterprise, evaluate_operational
+from agentguard.benchmark.report import format_report_compact, format_report_markdown
+from agentguard.benchmark.runner import _parse_file_blocks
 from agentguard.benchmark.types import (
     ALL_COMPLEXITIES,
     BenchmarkConfig,
@@ -23,6 +25,10 @@ from agentguard.benchmark.types import (
     ReadinessScore,
     RunResult,
 )
+
+# ══════════════════════════════════════════════════════════════════
+#  Types
+# ══════════════════════════════════════════════════════════════════
 
 
 class TestComplexity:
@@ -217,12 +223,6 @@ class TestBenchmarkReport:
 #  Catalog
 # ══════════════════════════════════════════════════════════════════
 
-from agentguard.benchmark.catalog import (
-    BENCHMARK_CATALOG,
-    get_default_specs,
-    get_specs_for_category,
-)
-
 
 class TestCatalog:
     def test_all_standard_categories_present(self) -> None:
@@ -255,8 +255,6 @@ class TestCatalog:
 # ══════════════════════════════════════════════════════════════════
 #  Evaluator
 # ══════════════════════════════════════════════════════════════════
-
-from agentguard.benchmark.evaluator import evaluate_enterprise, evaluate_operational
 
 
 class TestEvaluateEnterprise:
@@ -376,8 +374,6 @@ class TestEvaluateOperational:
 #  Report formatter
 # ══════════════════════════════════════════════════════════════════
 
-from agentguard.benchmark.report import format_report_compact, format_report_markdown
-
 
 class TestReportFormatter:
     def _make_report(self) -> BenchmarkReport:
@@ -431,8 +427,6 @@ class TestReportFormatter:
 # ══════════════════════════════════════════════════════════════════
 #  Runner (unit-level tests — no actual LLM calls)
 # ══════════════════════════════════════════════════════════════════
-
-from agentguard.benchmark.runner import _parse_file_blocks
 
 
 class TestParseFileBlocks:

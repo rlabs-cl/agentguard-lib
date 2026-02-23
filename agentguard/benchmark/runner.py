@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import time as _time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,9 @@ if TYPE_CHECKING:
     from agentguard.llm.base import LLMProvider
 
 _log = logging.getLogger(__name__)
+
+# Type alias for the progress callback.
+_ProgressCB = Callable[..., object]
 
 # Minimal system prompt for the control (raw LLM) run.
 _CONTROL_SYSTEM = (
@@ -69,7 +73,6 @@ class BenchmarkRunner:
         *,
         signing_secret: str = "",
     ) -> None:
-        from agentguard.archetypes.base import Archetype as _Arch
         from agentguard.archetypes.registry import get_archetype_registry
         from agentguard.llm.factory import create_llm_provider
 
@@ -172,8 +175,6 @@ class BenchmarkRunner:
 
     async def _run_control(self, spec: str) -> RunResult:
         """Generate code with a raw LLM call (no AgentGuard)."""
-        import re
-
         from agentguard.llm.types import Message
 
         t0 = _time.perf_counter()
@@ -264,9 +265,9 @@ class BenchmarkRunner:
         """Build and optionally sign the benchmark report."""
         # Compute archetype hash
         try:
-            from agentguard.archetypes.schema import compute_content_hash
-
             import yaml  # noqa: F401
+
+            from agentguard.archetypes.schema import compute_content_hash  # noqa: F401
 
             # Hash the archetype YAML if available
             arch_hash = getattr(self._archetype, "_yaml_content_hash", "")
@@ -300,23 +301,12 @@ class BenchmarkRunner:
 
 
 # ══════════════════════════════════════════════════════════════════
-#  Type aliases
-# ══════════════════════════════════════════════════════════════════
-
-from typing import Callable
-
-type _ProgressCB = Callable[..., object]  # async (complexity, step, detail) -> None
-
-
-# ══════════════════════════════════════════════════════════════════
 #  Helpers
 # ══════════════════════════════════════════════════════════════════
 
 
 def _error_result(error: str, duration_ms: int) -> RunResult:
     """Create a zero-score RunResult for an errored run."""
-    from agentguard.benchmark.types import DimensionScore, ReadinessScore
-
     empty_enterprise = ReadinessScore(
         category="enterprise", overall_score=0.0, passed=False, dimensions=[],
     )

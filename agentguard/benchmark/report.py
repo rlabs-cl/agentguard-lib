@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from agentguard.benchmark.types import BenchmarkReport, ComplexityRun, ReadinessScore
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agentguard.benchmark.types import BenchmarkReport, ReadinessScore
 
 
 def format_report_markdown(report: BenchmarkReport) -> str:

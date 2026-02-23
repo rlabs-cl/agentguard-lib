@@ -15,9 +15,9 @@ applied to the generated file set.
 from __future__ import annotations
 
 import ast
-import math
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agentguard.benchmark.types import (
     DimensionScore,
@@ -232,7 +232,7 @@ def _check_maintainability(files: dict[str, str]) -> DimensionScore:
     documented_funcs = 0
     long_funcs = 0  # functions > 50 lines
 
-    for path, tree in trees.items():
+    for _path, tree in trees.items():
         if tree is None:
             continue
         for node in ast.walk(tree):
@@ -277,8 +277,9 @@ def _check_maintainability(files: dict[str, str]) -> DimensionScore:
         if tree is None:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if re.match(r"^[a-z_][a-z0-9_]*$", node.name) or node.name.startswith("_"):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                re.match(r"^[a-z_][a-z0-9_]*$", node.name) or node.name.startswith("_")
+            ):
                     snake_funcs += 1
     if total_funcs:
         snake_ratio = snake_funcs / total_funcs
@@ -323,10 +324,11 @@ def _check_accessibility(files: dict[str, str]) -> DimensionScore:
         findings.append("Uses explicit HTTP status codes")
 
     # Check for docstrings / API doc patterns (OpenAPI hints)
-    if _has_pattern(all_content, r"@app\.\w+|@router\.\w+"):
-        if _has_pattern(all_content, r'summary\s*=|description\s*=|response_model'):
-            base += 0.15
-            findings.append("API endpoints have documentation metadata")
+    if _has_pattern(all_content, r"@app\.\w+|@router\.\w+") and _has_pattern(
+        all_content, r'summary\s*=|description\s*=|response_model',
+    ):
+        base += 0.15
+        findings.append("API endpoints have documentation metadata")
 
     # Check for ARIA / a11y patterns in frontend code
     html_tsx = {p: c for p, c in files.items() if any(p.endswith(e) for e in (".tsx", ".jsx", ".html", ".vue"))}
@@ -345,7 +347,6 @@ def _check_accessibility(files: dict[str, str]) -> DimensionScore:
 
 def _check_performance(files: dict[str, str]) -> DimensionScore:
     """Async patterns, caching, pagination, connection pooling."""
-    pf = _py_files(files)
     findings: list[str] = []
     all_content = "\n".join(files.values())
 
@@ -492,7 +493,6 @@ def _check_testability(files: dict[str, str]) -> DimensionScore:
 
 def _check_debuggability(files: dict[str, str]) -> DimensionScore:
     """Structured errors, descriptive messages, traceback context."""
-    pf = _py_files(files)
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
@@ -786,10 +786,7 @@ def _evaluate_category(
         dim_score = checker(files)
         dimensions.append(dim_score)
 
-    if dimensions:
-        overall = sum(d.score for d in dimensions) / len(dimensions)
-    else:
-        overall = 0.0
+    overall = sum(d.score for d in dimensions) / len(dimensions) if dimensions else 0.0
 
     return ReadinessScore(
         category=category,
