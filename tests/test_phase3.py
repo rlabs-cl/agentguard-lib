@@ -417,7 +417,9 @@ class TestMCPConfiguration:
         # Full-pipeline tools (require API key)
         assert "generate" in tool_names
         assert "challenge" in tool_names
-        assert len(tool_names) == 13
+        # Benchmark tool
+        assert "benchmark" in tool_names
+        assert len(tool_names) == 14
 
 
 # ================================================================== #
