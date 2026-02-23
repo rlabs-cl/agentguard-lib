@@ -253,6 +253,122 @@ def mcp_serve(transport: str, port: int) -> None:
 # ── Validate / Challenge CLI commands ─────────────────────────────────
 
 
+# ── Benchmark CLI command ──────────────────────────────────────────
+
+
+@main.command(name="benchmark")
+@click.option(
+    "-a", "--archetype", required=True,
+    help="Archetype name or path to YAML file.",
+)
+@click.option(
+    "-m", "--model", default="anthropic/claude-sonnet-4-20250514", show_default=True,
+    help="LLM model string (provider/model).",
+)
+@click.option(
+    "-o", "--output", default=None,
+    help="Output path for benchmark report JSON.",
+)
+@click.option(
+    "--markdown", default=None,
+    help="Output path for Markdown report.",
+)
+@click.option(
+    "--budget", default=10.0, show_default=True, type=float,
+    help="Maximum budget in USD for the benchmark run.",
+)
+@click.option(
+    "--secret", default=None, envvar="AGENTGUARD_BENCHMARK_SECRET",
+    help="HMAC signing secret for the report.",
+)
+@click.option(
+    "--category", default=None,
+    help="Category for spec catalog lookup (auto-detected from archetype if omitted).",
+)
+def benchmark_cmd(
+    archetype: str,
+    model: str,
+    output: str | None,
+    markdown: str | None,
+    budget: float,
+    secret: str | None,
+    category: str | None,
+) -> None:
+    """Run a comparative benchmark for an archetype.
+
+    Runs the same development request WITH and WITHOUT AgentGuard across
+    5 complexity levels, evaluating enterprise and operational readiness.
+
+    \b
+    Examples:
+        agentguard benchmark -a api_backend
+        agentguard benchmark -a api_backend -m openai/gpt-4o --budget 5.0
+        agentguard benchmark -a ./my-archetype.yaml -o report.json --markdown report.md
+    """
+    from agentguard.benchmark.catalog import get_default_specs
+    from agentguard.benchmark.report import format_report_compact, format_report_markdown
+    from agentguard.benchmark.runner import BenchmarkRunner
+    from agentguard.benchmark.types import BenchmarkConfig
+
+    # Resolve archetype
+    arch_arg: str
+    if archetype.endswith((".yaml", ".yml")):
+        from agentguard.archetypes.base import Archetype as _Arch
+        arch_obj = _Arch.from_file(archetype)
+        arch_arg = arch_obj  # type: ignore[assignment]
+        cat = category or getattr(arch_obj, "id", "general")
+    else:
+        arch_arg = archetype
+        cat = category or archetype
+
+    # Build default specs from catalog
+    specs = get_default_specs(cat)
+
+    config = BenchmarkConfig(
+        model=model,
+        specs=specs,
+        budget_ceiling_usd=budget,
+    )
+
+    runner = BenchmarkRunner(
+        archetype=arch_arg,
+        config=config,
+        signing_secret=secret or "",
+    )
+
+    async def _progress(complexity: str, step: str, detail: str) -> None:
+        click.echo(f"  [{complexity}] {step}: {detail}", err=True)
+
+    async def _run() -> None:
+        report = await runner.run(progress_callback=_progress)
+
+        # CLI summary
+        click.echo("")
+        click.echo(format_report_compact(report))
+
+        # Write JSON report
+        if output:
+            Path(output).write_text(report.to_json(), encoding="utf-8")
+            click.echo(f"\n✓ JSON report written to {output}")
+        else:
+            default_path = f"benchmark-{report.archetype_id}-{report.model.replace('/', '_')}.json"
+            Path(default_path).write_text(report.to_json(), encoding="utf-8")
+            click.echo(f"\n✓ JSON report written to {default_path}")
+
+        # Write Markdown report
+        if markdown:
+            md = format_report_markdown(report)
+            Path(markdown).write_text(md, encoding="utf-8")
+            click.echo(f"✓ Markdown report written to {markdown}")
+
+        sys.exit(0 if report.overall_passed else 1)
+
+    asyncio.run(_run())
+
+
+# ── Validate / Challenge CLI commands ─────────────────────────────────
+
+
 @main.command(name="validate")
 @click.argument("files", nargs=-1, required=True, type=click.Path(exists=True))
 @click.option(

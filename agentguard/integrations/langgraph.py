@@ -122,3 +122,44 @@ async def agentguard_challenge_node(state: dict[str, Any]) -> dict[str, Any]:
         "challenge_feedback": result.feedback,
         "grounding_violations": result.grounding_violations,
     }
+
+
+async def agentguard_benchmark_node(state: dict[str, Any]) -> dict[str, Any]:
+    """LangGraph node: run a comparative benchmark for an archetype.
+
+    Generates code WITH and WITHOUT AgentGuard across 5 complexity levels,
+    evaluating enterprise and operational readiness.
+
+    Reads from state:
+        - ``archetype`` (str, optional): Archetype name. Default: ``"api_backend"``.
+        - ``llm`` (str, optional): LLM model string. Default: ``"anthropic/claude-sonnet-4-20250514"``.
+        - ``benchmark_category`` (str, optional): Catalog category.
+        - ``benchmark_budget`` (float, optional): Budget ceiling in USD. Default: 10.0.
+
+    Writes to state:
+        - ``benchmark_passed`` (bool): Whether the benchmark passed.
+        - ``benchmark_report`` (dict): Full benchmark report dict.
+        - ``benchmark_improvement`` (float): Average improvement score.
+    """
+    from agentguard.benchmark.catalog import get_default_specs
+    from agentguard.benchmark.runner import BenchmarkRunner
+    from agentguard.benchmark.types import BenchmarkConfig
+
+    archetype = state.get("archetype", "api_backend")
+    llm = state.get("llm", "anthropic/claude-sonnet-4-20250514")
+    category = state.get("benchmark_category", archetype)
+    budget = state.get("benchmark_budget", 10.0)
+
+    specs = get_default_specs(category)
+    config = BenchmarkConfig(model=llm, specs=specs, budget_ceiling_usd=budget)
+    runner = BenchmarkRunner(archetype=archetype, config=config)
+
+    report = await runner.run()
+
+    return {
+        **state,
+        "benchmark_passed": report.overall_passed,
+        "benchmark_report": report.to_dict(),
+        "benchmark_improvement": report.improvement_avg,
+    }
+

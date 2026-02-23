@@ -564,3 +564,58 @@ async def agentguard_digest(
         },
         indent=2,
     )
+
+
+# ── 8. benchmark ────────────────────────────────────────────────────
+
+async def agentguard_benchmark(
+    archetype: str = "api_backend",
+    model: str = "anthropic/claude-sonnet-4-20250514",
+    category: str | None = None,
+    budget: float = 10.0,
+) -> str:
+    """Run a comparative benchmark for an archetype (no API key needed).
+
+    Generates code WITH and WITHOUT AgentGuard across 5 complexity levels,
+    evaluating enterprise and operational readiness. Returns the full
+    benchmark report as JSON.
+
+    Args:
+        archetype: Project archetype name or ID.
+        model: LLM model string (e.g. "anthropic/claude-sonnet-4-20250514").
+        category: Catalog category for specs (defaults to archetype name).
+        budget: Maximum budget in USD for all runs.
+
+    Returns:
+        JSON benchmark report with per-complexity results, readiness scores,
+        and an overall pass/fail verdict.
+    """
+    from agentguard.benchmark.catalog import get_default_specs
+    from agentguard.benchmark.runner import BenchmarkRunner
+    from agentguard.benchmark.types import BenchmarkConfig
+
+    cat = category or archetype
+    specs = get_default_specs(cat)
+    config = BenchmarkConfig(model=model, specs=specs, budget_ceiling_usd=budget)
+    runner = BenchmarkRunner(archetype=archetype, config=config)
+    report = await runner.run()
+
+    return json.dumps(
+        {
+            "tool": "agentguard_benchmark",
+            "description": (
+                "Comparative benchmark: raw LLM vs AgentGuard pipeline "
+                f"across {len(report.runs)} complexity levels."
+            ),
+            "overall_passed": report.overall_passed,
+            "summary": {
+                "enterprise_avg": round(report.enterprise_avg, 3),
+                "operational_avg": round(report.operational_avg, 3),
+                "improvement_avg": round(report.improvement_avg, 3),
+                "total_cost_usd": round(report.total_cost_usd, 4),
+            },
+            "report": report.to_dict(),
+        },
+        indent=2,
+    )
+

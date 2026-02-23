@@ -127,3 +127,35 @@ def agentguard_challenge(
         }
 
     return json.dumps(_run_async(_run()), indent=2)
+
+
+def agentguard_benchmark(
+    archetype: str = "api_backend",
+    model: str = "anthropic/claude-sonnet-4-20250514",
+    category: str | None = None,
+    budget: float = 10.0,
+) -> str:
+    """Run a comparative benchmark for an archetype.
+
+    Generates code WITH and WITHOUT AgentGuard across 5 complexity levels,
+    evaluating enterprise and operational readiness.
+
+    Args:
+        archetype: The project archetype name.
+        model: LLM model string.
+        category: Catalog category (defaults to archetype name).
+        budget: Maximum budget in USD.
+
+    Returns:
+        JSON string with the benchmark report.
+    """
+    from agentguard.benchmark.catalog import get_default_specs
+    from agentguard.benchmark.runner import BenchmarkRunner
+    from agentguard.benchmark.types import BenchmarkConfig
+
+    specs = get_default_specs(category or archetype)
+    config = BenchmarkConfig(model=model, specs=specs, budget_ceiling_usd=budget)
+    runner = BenchmarkRunner(archetype=archetype, config=config)
+
+    report = _run_async(runner.run())
+    return report.to_json()

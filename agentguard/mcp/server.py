@@ -45,6 +45,7 @@ def _create_mcp_server() -> Any:
     # ── Agent-native tools (no API key — the agent IS the LLM) ────
 
     from agentguard.mcp.agent_tools import (
+        agentguard_benchmark,
         agentguard_contracts,
         agentguard_contracts_and_wiring,
         agentguard_digest,
@@ -147,6 +148,21 @@ def _create_mcp_server() -> Any:
         No API key needed."""
         return await agentguard_digest(
             files_json=files_json, archetype=archetype,
+        )
+
+    @mcp.tool()
+    async def benchmark(
+        archetype: str = "api_backend",
+        model: str = "anthropic/claude-sonnet-4-20250514",
+        category: str | None = None,
+        budget: float = 10.0,
+    ) -> str:
+        """[Requires API key] Comparative benchmark: raw LLM vs AgentGuard pipeline.
+        Runs the same specs at 5 complexity levels, scoring enterprise and
+        operational readiness for both control and treatment. Returns a JSON
+        report with per-dimension scores and an overall pass/fail verdict."""
+        return await agentguard_benchmark(
+            archetype=archetype, model=model, category=category, budget=budget,
         )
 
     # ── Utility tools (pure computation, no LLM) ──────────────────

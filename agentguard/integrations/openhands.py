@@ -26,12 +26,13 @@ logger = logging.getLogger(__name__)
 MICRO_AGENT_DESCRIPTION = """\
 AgentGuard micro-agent for OpenHands.
 
-I can help you generate, validate, and self-challenge code using the
-AgentGuard quality-assurance pipeline.  I support these actions:
+I can help you generate, validate, self-challenge, and benchmark code
+using the AgentGuard quality-assurance pipeline.  I support these actions:
 
 - **generate**: Generate a full project from a specification
 - **validate**: Check code for syntax, lint, type, and structural issues
 - **challenge**: Self-challenge code against quality criteria via LLM
+- **benchmark**: Comparative benchmark (with vs without AgentGuard)
 
 Provide an ``action`` and appropriate parameters.
 """
@@ -77,15 +78,17 @@ class AgentGuardMicroAgent:
         archetype: str = "api_backend",
         files: dict[str, str] | None = None,
         criteria: list[str] | None = None,
+        benchmark_budget: float = 10.0,
     ) -> MicroAgentResult:
         """Execute a micro-agent action.
 
         Args:
             instruction: Natural-language instruction or spec.
-            action: One of ``"generate"``, ``"validate"``, ``"challenge"``.
-            archetype: Archetype name for generation / validation.
+            action: One of ``"generate"``, ``"validate"``, ``"challenge"``, ``"benchmark"``.
+            archetype: Archetype name for generation / validation / benchmark.
             files: Pre-existing files for validate / challenge.
             criteria: Quality criteria for challenge.
+            benchmark_budget: Max budget (USD) for benchmark runs.
 
         Returns:
             MicroAgentResult with action outcome.
@@ -97,11 +100,13 @@ class AgentGuardMicroAgent:
                 return await self._validate(files or {}, archetype)
             elif action == "challenge":
                 return await self._challenge(files or {}, criteria or [])
+            elif action == "benchmark":
+                return await self._benchmark(archetype, benchmark_budget)
             else:
                 return MicroAgentResult(
                     action=action,
                     success=False,
-                    error=f"Unknown action: {action}. Use generate/validate/challenge.",
+                    error=f"Unknown action: {action}. Use generate/validate/challenge/benchmark.",
                 )
         except Exception as exc:
             logger.exception("Micro-agent %s failed", action)
@@ -165,4 +170,23 @@ class AgentGuardMicroAgent:
                 "feedback": result.feedback,
                 "grounding_violations": result.grounding_violations,
             },
+        )
+
+    async def _benchmark(
+        self, archetype: str, budget: float,
+    ) -> MicroAgentResult:
+        from agentguard.benchmark.catalog import get_default_specs
+        from agentguard.benchmark.runner import BenchmarkRunner
+        from agentguard.benchmark.types import BenchmarkConfig
+
+        specs = get_default_specs(archetype)
+        config = BenchmarkConfig(
+            model=self.llm, specs=specs, budget_ceiling_usd=budget,
+        )
+        runner = BenchmarkRunner(archetype=archetype, config=config)
+        report = await runner.run()
+        return MicroAgentResult(
+            action="benchmark",
+            success=report.overall_passed,
+            data=report.to_dict(),
         )
