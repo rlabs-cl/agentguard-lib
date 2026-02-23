@@ -31,23 +31,23 @@ Requires **Python 3.11+**.
 
 ```bash
 # Core library (Anthropic + OpenAI providers included)
-pip install agentguard
+pip install rlabs-agentguard
 
 # With HTTP server (FastAPI + Uvicorn)
-pip install "agentguard[server]"
+pip install "rlabs-agentguard[server]"
 
 # With MCP server (for Claude Desktop, Cursor, Windsurf, Cline)
-pip install "agentguard[mcp]"
+pip install "rlabs-agentguard[mcp]"
 
 # With all optional providers and transports
-pip install "agentguard[all]"
+pip install "rlabs-agentguard[all]"
 ```
 
 ### Optional LLM providers
 
 ```bash
-pip install "agentguard[litellm]"    # LiteLLM router (Ollama, Together, etc.)
-pip install "agentguard[google]"     # Google Gemini
+pip install "rlabs-agentguard[litellm]"    # LiteLLM router (Ollama, Together, etc.)
+pip install "rlabs-agentguard[google]"     # Google Gemini
 ```
 
 ### Verify installation
