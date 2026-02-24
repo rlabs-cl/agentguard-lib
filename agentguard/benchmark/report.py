@@ -83,9 +83,9 @@ def format_report_markdown(report: BenchmarkReport) -> str:
         )
         lines.append("")
 
-        # Dimension breakdowns for treatment
-        _add_dimension_details(lines, "Enterprise Dimensions (Treatment)", run.treatment.enterprise)
-        _add_dimension_details(lines, "Operational Dimensions (Treatment)", run.treatment.operational)
+        # Side-by-side dimension breakdown (control vs treatment)
+        _add_dimension_comparison(lines, "Enterprise", run.control.enterprise, run.treatment.enterprise)
+        _add_dimension_comparison(lines, "Operational", run.control.operational, run.treatment.operational)
 
         # Errors
         if run.control.error:
@@ -116,10 +116,53 @@ def format_report_compact(report: BenchmarkReport) -> str:
     )
 
 
+def _add_dimension_comparison(
+    lines: list[str],
+    title: str,
+    control: ReadinessScore,
+    treatment: ReadinessScore,
+) -> None:
+    """Add a side-by-side control vs treatment per-dimension table."""
+    ctrl_map = {d.dimension: d for d in control.dimensions}
+    treat_map = {d.dimension: d for d in treatment.dimensions}
+    all_dims = list(ctrl_map) or list(treat_map)
+    if not all_dims:
+        return
+
+    lines.append(
+        f"<details><summary>{title} Dimensions — "
+        f"Control {control.overall_score:.3f} vs Treatment {treatment.overall_score:.3f}</summary>"
+    )
+    lines.append("")
+    lines.append("| Dimension | Ctrl | Treat | Δ | Pass? | Winner | Findings (treatment) |")
+    lines.append("|-----------|-----:|------:|--:|:-----:|:------:|---------------------|")
+    for dim_name in all_dims:
+        cd = ctrl_map.get(dim_name)
+        td = treat_map.get(dim_name)
+        ctrl_score = cd.score if cd else 0.0
+        treat_score = td.score if td else 0.0
+        delta = treat_score - ctrl_score
+        pass_icon = "✅" if (td and td.passed) else "❌"
+        if delta > 0.005:
+            winner = "treat"
+        elif delta < -0.005:
+            winner = "ctrl"
+        else:
+            winner = "tie"
+        findings_str = "; ".join(td.findings[:2]) if td and td.findings else "—"
+        lines.append(
+            f"| {dim_name} | {ctrl_score:.3f} | {treat_score:.3f} | "
+            f"{delta:+.3f} | {pass_icon} | {winner} | {findings_str} |"
+        )
+    lines.append("")
+    lines.append("</details>")
+    lines.append("")
+
+
 def _add_dimension_details(
     lines: list[str], title: str, readiness: ReadinessScore,
 ) -> None:
-    """Add dimension-level detail table."""
+    """Add dimension-level detail table for a single side (kept for compatibility)."""
     if not readiness.dimensions:
         return
 

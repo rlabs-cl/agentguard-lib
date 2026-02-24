@@ -644,6 +644,12 @@ async def agentguard_benchmark(
 async def agentguard_benchmark_evaluate(
     archetype: str = "api_backend",
     results_json: str = "[]",
+    environment: str = "",
+    llm_temperature: float | None = None,
+    llm_seed: int | None = None,
+    spec_source: str = "catalog",
+    run_by: str = "",
+    notes: str = "",
 ) -> str:
     """Evaluate benchmark results — score control vs treatment code.
 
@@ -651,7 +657,7 @@ async def agentguard_benchmark_evaluate(
 
     Accepts the generated code from both control and treatment runs across
     all complexity levels, evaluates enterprise and operational readiness,
-    and returns a full scored report.
+    and returns a full scored report with an environment metadata envelope.
 
     Args:
         archetype: The archetype used for the benchmark.
@@ -660,10 +666,22 @@ async def agentguard_benchmark_evaluate(
             - ``spec``: The original spec text.
             - ``control_files``: dict of filepath → content (raw LLM output).
             - ``treatment_files``: dict of filepath → content (AgentGuard output).
+        environment: Calling environment tag, e.g. "vscode-copilot", "cursor",
+            "custom-agent", "ci". Leave blank if unknown.
+        llm_temperature: Temperature used for LLM generation, if known.
+        llm_seed: Random seed used, if any.
+        spec_source: Origin of the specs — "catalog", "custom", or "production".
+        run_by: Identifier for who ran the benchmark (email, username, etc.).
+        notes: Free-text notes about this run.
 
     Returns:
-        JSON benchmark report with per-dimension scores and overall verdict.
+        JSON benchmark report with per-dimension scores, overall verdict,
+        and a populated environment metadata envelope.
     """
+    import platform
+    import sys
+
+    from agentguard._version import __version__ as agentguard_version
     from agentguard.benchmark.evaluator import (
         evaluate_enterprise,
         evaluate_operational,
@@ -739,6 +757,19 @@ async def agentguard_benchmark_evaluate(
             "compact": format_report_compact(report),
             "markdown": format_report_markdown(report),
             "report": report.to_dict(),
+            "meta": {
+                "agentguard_version": agentguard_version,
+                "python_version": sys.version.split()[0],
+                "platform": platform.system(),
+                "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                "environment": None,
+                "llm_temperature": None,
+                "llm_seed": None,
+                "system_prompt_injected": None,
+                "spec_source": "catalog",
+                "run_by": None,
+                "notes": None,
+            },
         },
         indent=2,
     )

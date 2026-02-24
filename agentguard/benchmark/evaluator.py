@@ -187,9 +187,9 @@ def _check_modularity(files: dict[str, str]) -> DimensionScore:
     n_files = len(pf)
     findings.append(f"{n_files} Python file(s)")
 
-    # Multi-file bonus (>1 = 0.3, >3 = 0.5, >5 = 0.7)
+    # Multi-file bonus — single file scores 0; must earn score through modularity
     if n_files == 1:
-        file_score = 0.2
+        file_score = 0.0
     elif n_files <= 3:
         file_score = 0.4
     elif n_files <= 5:
@@ -302,7 +302,7 @@ def _check_accessibility(files: dict[str, str]) -> DimensionScore:
     findings: list[str] = []
     all_content = "\n".join(files.values())
 
-    base = 0.3  # Baseline for having any code
+    base = 0.0
 
     # Check for string externalization patterns
     if _has_pattern(all_content, r"gettext|ngettext|_\(|i18n|locale"):
@@ -350,7 +350,7 @@ def _check_performance(files: dict[str, str]) -> DimensionScore:
     findings: list[str] = []
     all_content = "\n".join(files.values())
 
-    base = 0.3
+    base = 0.0
 
     # Async patterns
     if _has_pattern(all_content, r"async\s+def|await\s+|asyncio"):
@@ -393,7 +393,7 @@ def _check_observability(files: dict[str, str]) -> DimensionScore:
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
-    base = 0.1
+    base = 0.0
 
     # Structured logging
     if _has_pattern(all_content, r"logging\.getLogger|structlog|logger\.\w+"):
@@ -439,7 +439,7 @@ def _check_testability(files: dict[str, str]) -> DimensionScore:
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
-    base = 0.2
+    base = 0.0
 
     # Test files present
     test_files = [p for p in files if "test" in p.lower() or p.startswith("test_")]
@@ -496,7 +496,7 @@ def _check_debuggability(files: dict[str, str]) -> DimensionScore:
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
-    base = 0.2
+    base = 0.0
 
     # Custom exception classes
     custom_exc = len(re.findall(r"class\s+\w+(?:Error|Exception)\s*\(", all_content))
@@ -540,7 +540,7 @@ def _check_feature_extensibility(files: dict[str, str]) -> DimensionScore:
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
-    base = 0.2
+    base = 0.0
 
     # Abstract base / Protocol for extensibility
     if _has_pattern(all_content, r"ABC|Protocol|@abstractmethod|Abstract\w+"):
@@ -578,7 +578,7 @@ def _check_cloud_scalability(files: dict[str, str]) -> DimensionScore:
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
-    base = 0.2
+    base = 0.0
 
     # Environment variable configuration (12-factor)
     env_refs = len(re.findall(r"os\.environ|os\.getenv|environ\.get|settings_from_env|dotenv", all_content))
@@ -626,7 +626,7 @@ def _check_api_migration_cost(files: dict[str, str]) -> DimensionScore:
     all_content = "\n".join(files.values())
     findings: list[str] = []
 
-    base = 0.3  # Higher baseline — absence of bad patterns is good
+    base = 0.0
 
     # API versioning
     if _has_pattern(all_content, r"/v\d+/|/api/v\d|version.*header|api_version"):
@@ -669,7 +669,7 @@ def _check_test_surface(files: dict[str, str]) -> DimensionScore:
         test_funcs += len(re.findall(r"def test_\w+|async def test_\w+", content))
 
     if not test_files:
-        return _score(0.1, "test_surface", ["No test files found"])
+        return _score(0.0, "test_surface", ["No test files found"])
 
     base = 0.3
     findings.append(f"{len(test_files)} test file(s), {test_funcs} test function(s)")
@@ -710,7 +710,7 @@ def _check_team_onboarding(files: dict[str, str]) -> DimensionScore:
     """README, setup instructions, consistent structure, clear entry points."""
     findings: list[str] = []
 
-    base = 0.2
+    base = 0.0
 
     # README / documentation files
     doc_files = [
