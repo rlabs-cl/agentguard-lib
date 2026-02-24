@@ -794,6 +794,12 @@ async def agentguard_benchmark_evaluate(
         runs=runs,
     )
 
+    # Re-compute aggregates applying fitness weights from the archetype YAML
+    # (__post_init__ already ran without weights; this corrects enterprise_avg /
+    # operational_avg / overall_passed to exclude N/A dimensions like accessibility).
+    if scoring_weights:
+        report.compute_aggregates(scoring_weights=scoring_weights)
+
     # ── STEP 4: Auto-upload if API key is configured ──────────────
     upload_status: dict[str, Any] = {"attempted": False}
     api_key = os.environ.get("AGENTGUARD_API_KEY", "")

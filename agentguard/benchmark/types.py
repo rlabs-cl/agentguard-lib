@@ -79,6 +79,26 @@ class ReadinessScore:
     passed: bool
     dimensions: list[DimensionScore] = field(default_factory=list)
 
+    def weighted_score(self, weights: dict[str, float]) -> float:
+        """Compute a fitness-weighted average, excluding dimensions with weight 0.0.
+
+        Dimensions absent from *weights* default to weight 1.0.
+        If all dimensions are excluded (weight 0), falls back to the raw overall_score.
+        """
+        if not weights or not self.dimensions:
+            return self.overall_score
+        total_weight = 0.0
+        weighted_sum = 0.0
+        for dim in self.dimensions:
+            w = weights.get(dim.dimension, 1.0)
+            if w <= 0.0:
+                continue  # exclude N/A dimensions
+            weighted_sum += dim.score * w
+            total_weight += w
+        if total_weight == 0.0:
+            return self.overall_score  # all excluded — fall back
+        return weighted_sum / total_weight
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "category": self.category,
@@ -221,18 +241,34 @@ class BenchmarkReport:
         enterprise_threshold: float = 0.6,
         operational_threshold: float = 0.6,
         improvement_threshold: float = 0.05,
+        scoring_weights: dict[str, float] | None = None,
     ) -> None:
-        """Recompute averages from runs and set overall_passed."""
+        """Recompute averages from runs and set overall_passed.
+
+        When *scoring_weights* are provided (from the archetype YAML), dimensions
+        with weight 0.0 are excluded from the average, and remaining dimensions are
+        averaged proportionally to their weight.  This makes benchmark scores
+        meaningful for meta-archetypes (e.g. archetype_author) that produce YAML
+        output rather than Python apps.
+        """
         if not self.runs:
             return
         n = len(self.runs)
         self.improvement_avg = sum(r.improvement for r in self.runs) / n
-        self.enterprise_avg = sum(
-            r.treatment.enterprise.overall_score for r in self.runs
-        ) / n
-        self.operational_avg = sum(
-            r.treatment.operational.overall_score for r in self.runs
-        ) / n
+        if scoring_weights:
+            self.enterprise_avg = sum(
+                r.treatment.enterprise.weighted_score(scoring_weights) for r in self.runs
+            ) / n
+            self.operational_avg = sum(
+                r.treatment.operational.weighted_score(scoring_weights) for r in self.runs
+            ) / n
+        else:
+            self.enterprise_avg = sum(
+                r.treatment.enterprise.overall_score for r in self.runs
+            ) / n
+            self.operational_avg = sum(
+                r.treatment.operational.overall_score for r in self.runs
+            ) / n
         self.total_cost_usd = sum(
             r.control.cost_usd + r.treatment.cost_usd for r in self.runs
         )
