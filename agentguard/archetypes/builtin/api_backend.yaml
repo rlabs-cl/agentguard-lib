@@ -79,3 +79,22 @@ reference_patterns:
   - "sqlalchemy_model_pattern"
   - "pydantic_schema_pattern"
   - "pytest_async_pattern"
+
+target_output: "REST API backend service with authentication and database"
+
+scoring_weights:
+  # Enterprise — all critical for backend services
+  type_safety: 1.0
+  modularity: 1.0
+  maintainability: 1.0
+  accessibility: 0.0   # N/A — no UI layer
+  performance: 1.0
+  observability: 1.0
+  testability: 1.0
+  # Operational — all critical
+  debuggability: 1.0
+  feature_extensibility: 1.0
+  cloud_scalability: 1.0
+  api_migration_cost: 1.0
+  test_surface: 1.0
+  team_onboarding: 1.0

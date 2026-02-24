@@ -168,13 +168,48 @@ def _create_mcp_server() -> Any:
     async def benchmark_evaluate(
         archetype: str = "api_backend",
         results_json: str = "[]",
+        archetype_yaml: str = "",
+        environment: str = "",
+        llm_temperature: float | None = None,
+        llm_seed: int | None = None,
+        spec_source: str = "catalog",
+        run_by: str = "",
+        notes: str = "",
     ) -> str:
         """Score control vs treatment code from a benchmark run (no API key needed).
         Accepts generated code from both paths, runs static-analysis scoring
         across enterprise and operational readiness dimensions, and returns
-        a full report with per-dimension scores and overall verdict."""
+        a full report with per-dimension scores, overall verdict, and an
+        environment metadata envelope (agentguard_version, python_version,
+        platform, environment tag, token usage delta, and optional run context).
+
+        If archetype_yaml is provided:
+        - Validates the YAML schema first (STEP 0) and returns errors if invalid.
+        - Extracts scoring_weights for fitness-aware N/A rendering.
+        - Auto-uploads the report to the platform if AGENTGUARD_API_KEY is set.
+
+        Args:
+            archetype: Archetype used for the benchmark.
+            results_json: JSON array with complexity, spec, control_files, treatment_files.
+            archetype_yaml: Raw YAML of the archetype being benchmarked (enables validation,
+                fitness weights, and auto-upload to the platform).
+            environment: Calling tool tag — e.g. "vscode-copilot", "cursor", "custom-agent", "ci".
+            llm_temperature: LLM temperature used, if known.
+            llm_seed: LLM random seed used, if any.
+            spec_source: "catalog", "custom", or "production".
+            run_by: Who ran this benchmark (email or username).
+            notes: Free-text notes about this run.
+        """
         return await agentguard_benchmark_evaluate(
-            archetype=archetype, results_json=results_json,
+            archetype=archetype,
+            results_json=results_json,
+            archetype_yaml=archetype_yaml,
+            environment=environment,
+            llm_temperature=llm_temperature,
+            llm_seed=llm_seed,
+            spec_source=spec_source,
+            run_by=run_by,
+            notes=notes,
         )
 
     # ── Utility tools (pure computation, no LLM) ──────────────────

@@ -8,8 +8,13 @@ if TYPE_CHECKING:
     from agentguard.benchmark.types import BenchmarkReport, ReadinessScore
 
 
-def format_report_markdown(report: BenchmarkReport) -> str:
+def format_report_markdown(report: BenchmarkReport, weights: dict[str, float] | None = None) -> str:
     """Render a BenchmarkReport as a Markdown summary.
+
+    Args:
+        report: The benchmark report to format.
+        weights: Optional per-dimension relevance weights from the archetype YAML.
+            Dimensions with weight=0.0 are rendered as N/A.
 
     Suitable for CLI output, GitHub comments, or embedding in documentation.
     """
@@ -84,8 +89,8 @@ def format_report_markdown(report: BenchmarkReport) -> str:
         lines.append("")
 
         # Side-by-side dimension breakdown (control vs treatment)
-        _add_dimension_comparison(lines, "Enterprise", run.control.enterprise, run.treatment.enterprise)
-        _add_dimension_comparison(lines, "Operational", run.control.operational, run.treatment.operational)
+        _add_dimension_comparison(lines, "Enterprise", run.control.enterprise, run.treatment.enterprise, weights)
+        _add_dimension_comparison(lines, "Operational", run.control.operational, run.treatment.operational, weights)
 
         # Errors
         if run.control.error:
@@ -121,22 +126,39 @@ def _add_dimension_comparison(
     title: str,
     control: ReadinessScore,
     treatment: ReadinessScore,
+    weights: dict[str, float] | None = None,
 ) -> None:
-    """Add a side-by-side control vs treatment per-dimension table."""
+    """Add a side-by-side control vs treatment per-dimension table.
+
+    Dimensions with ``weight=0.0`` are rendered as N/A and excluded from
+    the pass/fail count — they are architecturally irrelevant for the
+    archetype being benchmarked.
+    """
     ctrl_map = {d.dimension: d for d in control.dimensions}
     treat_map = {d.dimension: d for d in treatment.dimensions}
     all_dims = list(ctrl_map) or list(treat_map)
     if not all_dims:
         return
 
+    # Count applicable (non-zero-weight) dimensions
+    applicable = [d for d in all_dims if (weights or {}).get(d, 1.0) > 0.0] if weights else all_dims
+
     lines.append(
         f"<details><summary>{title} Dimensions — "
-        f"Control {control.overall_score:.3f} vs Treatment {treatment.overall_score:.3f}</summary>"
+        f"Control {control.overall_score:.3f} vs Treatment {treatment.overall_score:.3f}"
+        + (f" ({len(all_dims) - len(applicable)} N/A)" if weights and len(applicable) < len(all_dims) else "")
+        + "</summary>"
     )
     lines.append("")
     lines.append("| Dimension | Ctrl | Treat | Δ | Pass? | Winner | Findings (treatment) |")
     lines.append("|-----------|-----:|------:|--:|:-----:|:------:|---------------------|")
     for dim_name in all_dims:
+        w = (weights or {}).get(dim_name, 1.0)
+        if w == 0.0:
+            lines.append(
+                f"| {dim_name} | — | — | — | N/A | — | *Not applicable for this archetype* |"
+            )
+            continue
         cd = ctrl_map.get(dim_name)
         td = treat_map.get(dim_name)
         ctrl_score = cd.score if cd else 0.0

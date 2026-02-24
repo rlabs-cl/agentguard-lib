@@ -69,6 +69,15 @@ VALID_CATEGORIES = frozenset({
     "data", "ml", "devops", "mobile", "infra",
 })
 
+VALID_DIMENSIONS = frozenset({
+    # Enterprise readiness
+    "type_safety", "modularity", "maintainability", "accessibility",
+    "performance", "observability", "testability",
+    # Operational readiness
+    "debuggability", "feature_extensibility", "cloud_scalability",
+    "api_migration_cost", "test_surface", "team_onboarding",
+})
+
 
 # ── Sub-schemas ───────────────────────────────────────────────────
 
@@ -239,6 +248,28 @@ class ArchetypeSchema(BaseModel):
     self_challenge: SelfChallengeSchema = Field(default_factory=SelfChallengeSchema)
     reference_patterns: list[str] = Field(default_factory=list, max_length=30)
     infrastructure_files: list[str] = Field(default_factory=list, max_length=50)
+    target_output: str | None = Field(None, max_length=255)
+    scoring_weights: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-dimension relevance weights (0.0 = N/A, 1.0 = full weight). "
+                    "Missing dimensions default to 1.0.",
+    )
+
+    @field_validator("scoring_weights")
+    @classmethod
+    def _valid_scoring_weights(cls, v: dict[str, float]) -> dict[str, float]:
+        unknown = set(v.keys()) - VALID_DIMENSIONS
+        if unknown:
+            # Suggest closest match for common typos
+            msg = f"Unknown scoring_weights dimensions: {sorted(unknown)}. "
+            msg += f"Valid dimensions: {sorted(VALID_DIMENSIONS)}"
+            raise ValueError(msg)
+        invalid_range = {k: val for k, val in v.items() if not (0.0 <= val <= 1.0)}
+        if invalid_range:
+            raise ValueError(
+                f"scoring_weights values must be 0.0–1.0. Out of range: {invalid_range}"
+            )
+        return v
 
     @field_validator("id")
     @classmethod
@@ -351,6 +382,7 @@ def _validate_archetype_dict(data: dict[str, Any]) -> ArchetypeSchema:
     for key in (
         "pipeline", "context_recipes", "validation",
         "self_challenge", "reference_patterns", "infrastructure_files",
+        "target_output", "scoring_weights",
     ):
         if key in data:
             normalized[key] = data[key]

@@ -644,6 +644,7 @@ async def agentguard_benchmark(
 async def agentguard_benchmark_evaluate(
     archetype: str = "api_backend",
     results_json: str = "[]",
+    archetype_yaml: str = "",
     environment: str = "",
     llm_temperature: float | None = None,
     llm_seed: int | None = None,
@@ -659,13 +660,24 @@ async def agentguard_benchmark_evaluate(
     all complexity levels, evaluates enterprise and operational readiness,
     and returns a full scored report with an environment metadata envelope.
 
+    If ``archetype_yaml`` is provided:
+    - Step 0: validates the YAML schema and returns errors immediately if invalid.
+    - Extracts ``scoring_weights`` so dimensions irrelevant to the archetype
+      type (weight=0.0) are rendered as N/A in the report.
+    - If ``AGENTGUARD_API_KEY`` is set, auto-uploads the report to the platform
+      and attaches it to the archetype draft (creating it if it doesn't exist yet).
+
     Args:
-        archetype: The archetype used for the benchmark.
+        archetype: The archetype id used for the benchmark (catalog name or slug).
         results_json: JSON array of objects, each with:
             - ``complexity``: "trivial" | "low" | "medium" | "high" | "enterprise"
             - ``spec``: The original spec text.
             - ``control_files``: dict of filepath → content (raw LLM output).
             - ``treatment_files``: dict of filepath → content (AgentGuard output).
+        archetype_yaml: Raw YAML string of a custom archetype being tested locally.
+            When provided, schema validation runs first (STEP 0). The YAML's
+            ``scoring_weights`` and ``id`` are used for fitness-aware reporting
+            and auto-upload slug derivation.
         environment: Calling environment tag, e.g. "vscode-copilot", "cursor",
             "custom-agent", "ci". Leave blank if unknown.
         llm_temperature: Temperature used for LLM generation, if known.
@@ -678,6 +690,7 @@ async def agentguard_benchmark_evaluate(
         JSON benchmark report with per-dimension scores, overall verdict,
         and a populated environment metadata envelope.
     """
+    import os
     import platform
     import sys
 
@@ -697,6 +710,49 @@ async def agentguard_benchmark_evaluate(
         RunResult,
     )
 
+    # ── STEP 0: Validate archetype YAML if provided ───────────────
+    scoring_weights: dict[str, float] = {}
+    archetype_slug: str = archetype
+    archetype_yaml_for_upload: str | None = None
+
+    if archetype_yaml:
+        try:
+            from agentguard.archetypes.schema import validate_archetype_yaml
+            from pydantic import ValidationError as _PydanticValidationError
+
+            validated_schema = validate_archetype_yaml(archetype_yaml)
+            scoring_weights = dict(validated_schema.scoring_weights or {})
+            archetype_slug = validated_schema.id
+            archetype_yaml_for_upload = archetype_yaml
+        except ValueError as e:
+            return json.dumps(
+                {
+                    "tool": "agentguard_benchmark_evaluate",
+                    "error": "archetype_yaml failed schema validation (STEP 0)",
+                    "errors": [{"field": "yaml", "message": str(e)}],
+                    "benchmark_result": None,
+                },
+                indent=2,
+            )
+        except Exception as e:  # pydantic ValidationError or unexpected
+            errors = []
+            if hasattr(e, "errors"):
+                for err in e.errors():  # type: ignore[union-attr]
+                    loc = " → ".join(str(x) for x in err["loc"])
+                    errors.append({"field": loc, "message": err["msg"]})
+            else:
+                errors = [{"field": "yaml", "message": str(e)}]
+            return json.dumps(
+                {
+                    "tool": "agentguard_benchmark_evaluate",
+                    "error": "archetype_yaml failed schema validation (STEP 0)",
+                    "errors": errors,
+                    "benchmark_result": None,
+                },
+                indent=2,
+            )
+
+    # ── STEP 1–3: Score ───────────────────────────────────────────
     results = json.loads(results_json)
     runs: list[ComplexityRun] = []
 
@@ -706,7 +762,6 @@ async def agentguard_benchmark_evaluate(
         control_files: dict[str, str] = entry.get("control_files", {})
         treatment_files: dict[str, str] = entry.get("treatment_files", {})
 
-        # Evaluate control
         ctrl_ent = evaluate_enterprise(control_files)
         ctrl_ops = evaluate_operational(control_files)
         ctrl_lines = sum(c.count("\n") + 1 for c in control_files.values()) if control_files else 0
@@ -717,7 +772,6 @@ async def agentguard_benchmark_evaluate(
             total_lines=ctrl_lines,
         )
 
-        # Evaluate treatment
         treat_ent = evaluate_enterprise(treatment_files)
         treat_ops = evaluate_operational(treatment_files)
         treat_lines = sum(c.count("\n") + 1 for c in treatment_files.values()) if treatment_files else 0
@@ -736,10 +790,50 @@ async def agentguard_benchmark_evaluate(
         ))
 
     report = BenchmarkReport(
-        archetype_id=archetype,
+        archetype_id=archetype_slug,
         model="agent-native",
         runs=runs,
     )
+
+    # ── STEP 4: Auto-upload if API key is configured ──────────────
+    upload_status: dict[str, Any] = {"attempted": False}
+    api_key = os.environ.get("AGENTGUARD_API_KEY", "")
+    api_url = os.environ.get("AGENTGUARD_API_URL", "https://api.agentguard.dev")
+
+    if api_key:
+        upload_status["attempted"] = True
+        upload_body: dict[str, Any] = {
+            **report.to_dict(),
+            "archetype_id": archetype_slug,
+        }
+        if archetype_yaml_for_upload:
+            upload_body["archetype_yaml"] = archetype_yaml_for_upload
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.put(
+                    f"{api_url}/api/marketplace/archetypes/{archetype_slug}/benchmark",
+                    json=upload_body,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+            if resp.status_code in (200, 201):
+                upload_status["success"] = True
+                upload_status["platform_url"] = (
+                    f"{api_url.replace('api.', 'app.') if api_url.startswith('https://api.') else api_url}"
+                    f"/dashboard/archetypes"
+                )
+            else:
+                upload_status["success"] = False
+                upload_status["status_code"] = resp.status_code
+                try:
+                    upload_status["detail"] = resp.json().get("detail", resp.text[:200])
+                except Exception:
+                    upload_status["detail"] = resp.text[:200]
+        except Exception as exc:
+            upload_status["success"] = False
+            upload_status["detail"] = str(exc)
+
+    created_at_str = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
 
     return json.dumps(
         {
@@ -755,20 +849,21 @@ async def agentguard_benchmark_evaluate(
                 "improvement_avg": round(report.improvement_avg, 3),
             },
             "compact": format_report_compact(report),
-            "markdown": format_report_markdown(report),
+            "markdown": format_report_markdown(report, weights=scoring_weights or None),
             "report": report.to_dict(),
+            "upload": upload_status,
             "meta": {
                 "agentguard_version": agentguard_version,
                 "python_version": sys.version.split()[0],
                 "platform": platform.system(),
-                "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-                "environment": None,
-                "llm_temperature": None,
-                "llm_seed": None,
+                "created_at": created_at_str,
+                "environment": environment or None,
+                "llm_temperature": llm_temperature,
+                "llm_seed": llm_seed,
                 "system_prompt_injected": None,
-                "spec_source": "catalog",
-                "run_by": None,
-                "notes": None,
+                "spec_source": spec_source or "catalog",
+                "run_by": run_by or None,
+                "notes": notes or None,
             },
         },
         indent=2,

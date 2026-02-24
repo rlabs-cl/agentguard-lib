@@ -88,3 +88,22 @@ reference_patterns:
   - "pydantic_schema_pattern"
   - "session_auth_pattern"
   - "static_files_pattern"
+
+target_output: "Full-stack web application with frontend, backend routes, and database"
+
+scoring_weights:
+  # Enterprise — full-stack needs everything
+  type_safety: 1.0
+  modularity: 1.0
+  maintainability: 1.0
+  accessibility: 1.0   # Has UI layer
+  performance: 1.0
+  observability: 0.7
+  testability: 1.0
+  # Operational
+  debuggability: 1.0
+  feature_extensibility: 1.0
+  cloud_scalability: 0.5
+  api_migration_cost: 0.7
+  test_surface: 1.0
+  team_onboarding: 1.0

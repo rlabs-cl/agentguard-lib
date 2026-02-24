@@ -59,3 +59,22 @@ reference_patterns:
   - "argparse_pattern"
   - "pathlib_pattern"
   - "logging_pattern"
+
+target_output: "Single-file Python script for automation, data processing, or utilities"
+
+scoring_weights:
+  # Enterprise — reduced expectations for scripts
+  type_safety: 0.5
+  modularity: 0.5
+  maintainability: 0.5
+  accessibility: 0.0   # N/A
+  performance: 0.5
+  observability: 0.0   # N/A — scripts use print/logging but no telemetry
+  testability: 0.5
+  # Operational
+  debuggability: 1.0
+  feature_extensibility: 0.3
+  cloud_scalability: 0.0   # N/A
+  api_migration_cost: 0.0  # N/A
+  test_surface: 0.5
+  team_onboarding: 0.5

@@ -70,3 +70,22 @@ reference_patterns:
   - "pytest_fixture_pattern"
   - "typing_pattern"
   - "contextmanager_pattern"
+
+target_output: "Reusable Python library package with public API and comprehensive tests"
+
+scoring_weights:
+  # Enterprise
+  type_safety: 1.0
+  modularity: 1.0
+  maintainability: 1.0
+  accessibility: 0.0   # N/A — no UI
+  performance: 1.0
+  observability: 0.3   # Libraries log but don't own telemetry
+  testability: 1.0
+  # Operational
+  debuggability: 1.0
+  feature_extensibility: 1.0
+  cloud_scalability: 0.0   # N/A — library, not deployed service
+  api_migration_cost: 1.0  # Critical — public API stability is the whole point
+  test_surface: 1.0
+  team_onboarding: 1.0

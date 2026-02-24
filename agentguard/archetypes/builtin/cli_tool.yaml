@@ -68,3 +68,22 @@ reference_patterns:
   - "click_command_pattern"
   - "rich_output_pattern"
   - "pathlib_pattern"
+
+target_output: "Command-line tool with subcommands and rich terminal output"
+
+scoring_weights:
+  # Enterprise
+  type_safety: 1.0
+  modularity: 1.0
+  maintainability: 1.0
+  accessibility: 0.0   # N/A — CLI output accessibility not measured here
+  performance: 0.5     # Less critical than latency-sensitive services
+  observability: 0.3   # Logging matters, but no metrics/traces needed
+  testability: 1.0
+  # Operational
+  debuggability: 1.0
+  feature_extensibility: 1.0
+  cloud_scalability: 0.0   # N/A — CLI tools run locally
+  api_migration_cost: 0.3  # Low — CLI interfaces rarely need migration cost analysis
+  test_surface: 1.0
+  team_onboarding: 1.0

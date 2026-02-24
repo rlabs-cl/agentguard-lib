@@ -113,3 +113,22 @@ reference_patterns:
   - "react_error_boundary_pattern"
   - "vite_config_pattern"
   - "css_custom_properties_pattern"
+
+target_output: "React TypeScript single-page application with component architecture"
+
+scoring_weights:
+  # Enterprise
+  type_safety: 1.0
+  modularity: 1.0
+  maintainability: 1.0
+  accessibility: 1.0   # Critical for UI
+  performance: 1.0
+  observability: 0.3   # Minimal server-side observability
+  testability: 1.0
+  # Operational
+  debuggability: 1.0
+  feature_extensibility: 1.0
+  cloud_scalability: 0.0   # N/A — static SPA, no server
+  api_migration_cost: 0.5  # Partial — API client coupling
+  test_surface: 1.0
+  team_onboarding: 1.0
