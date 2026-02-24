@@ -718,7 +718,6 @@ async def agentguard_benchmark_evaluate(
     if archetype_yaml:
         try:
             from agentguard.archetypes.schema import validate_archetype_yaml
-            from pydantic import ValidationError as _PydanticValidationError
 
             validated_schema = validate_archetype_yaml(archetype_yaml)
             scoring_weights = dict(validated_schema.scoring_weights or {})
