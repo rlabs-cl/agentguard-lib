@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlabs-agentguard"
-version = "0.3.1"
+version = "0.3.2"
 description = "A quality-assurance engine for LLM-generated code"
 readme = "README.MD"
 requires-python = ">=3.11"
