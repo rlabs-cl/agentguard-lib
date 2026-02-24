@@ -83,7 +83,7 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
     base_url = os.environ.get(
         "AGENTGUARD_API_URL", "https://api.agentguard.dev"
     ).rstrip("/")
-    url = f"{base_url}/archetypes/{archetype_id}/download"
+    url = f"{base_url}/api/marketplace/archetypes/{archetype_id}/download"
     req = urllib.request.Request(
         url, headers={"Authorization": f"Bearer {api_key}"}
     )
