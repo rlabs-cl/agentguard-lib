@@ -92,6 +92,11 @@ module = ["anthropic.*", "openai.*", "litellm.*", "google.*", "mcp.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# google-genai SDK types are not fully stub-compatible; suppress arg-type errors
+module = ["agentguard.llm.gemini_provider"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 module = [
     "agentguard.mcp.server",
     "agentguard.mcp.tools",

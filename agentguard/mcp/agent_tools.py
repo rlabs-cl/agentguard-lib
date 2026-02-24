@@ -736,7 +736,7 @@ async def agentguard_benchmark_evaluate(
         except Exception as e:  # pydantic ValidationError or unexpected
             errors = []
             if hasattr(e, "errors"):
-                for err in e.errors():  # type: ignore[union-attr]
+                for err in e.errors():  # pydantic ValidationError
                     loc = " → ".join(str(x) for x in err["loc"])
                     errors.append({"field": loc, "message": err["msg"]})
             else:
