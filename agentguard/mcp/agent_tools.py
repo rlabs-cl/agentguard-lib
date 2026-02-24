@@ -28,9 +28,113 @@ logger = logging.getLogger(__name__)
 
 # ── helpers ────────────────────────────────────────────────────────
 
+# In-process cache for marketplace archetypes (avoids repeated API calls per session)
+_marketplace_cache: dict[str, Any] = {}
+
+
 def _load_arch(archetype: str) -> Any:
+    """Load an archetype by ID.
+
+    Resolution order:
+    1. Built-in registry  (no auth required)
+    2. In-process cache   (already fetched this session)
+    3. Marketplace API    (requires AGENTGUARD_API_KEY + ownership/purchase)
+    """
     from agentguard.archetypes.base import Archetype
-    return Archetype.load(archetype)
+
+    try:
+        return Archetype.load(archetype)
+    except KeyError:
+        pass
+
+    if archetype in _marketplace_cache:
+        return _marketplace_cache[archetype]
+
+    return _fetch_from_marketplace(archetype)
+
+
+def _fetch_from_marketplace(archetype_id: str) -> Any:
+    """Download a marketplace archetype via the platform API and cache it for this session.
+
+    Requires:
+    - ``AGENTGUARD_API_KEY`` env var set to a valid ``ag_`` key
+    - The calling user must be the archetype author, owner, or have purchased it
+
+    Raises:
+        KeyError:        Archetype not found in marketplace or API key not set
+        PermissionError: Invalid API key (401) or not licensed/purchased (403)
+        RuntimeError:    Unexpected API error
+    """
+    import json as _json
+    import os
+    import urllib.error
+    import urllib.request
+
+    from agentguard.archetypes.registry import get_archetype_registry
+    from agentguard.archetypes.schema import TrustLevel
+
+    api_key = os.environ.get("AGENTGUARD_API_KEY", "")
+    if not api_key:
+        raise KeyError(
+            f"Archetype '{archetype_id}' is not a built-in. "
+            "Set the AGENTGUARD_API_KEY environment variable to load marketplace archetypes."
+        )
+
+    base_url = os.environ.get(
+        "AGENTGUARD_API_URL", "https://api.agentguard.dev"
+    ).rstrip("/")
+    url = f"{base_url}/archetypes/{archetype_id}/download"
+    req = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {api_key}"}
+    )
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = _json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            raise PermissionError(
+                "Invalid or expired API key — cannot load marketplace archetype. "
+                "Check the AGENTGUARD_API_KEY environment variable."
+            ) from exc
+        if exc.code == 403:
+            raise PermissionError(
+                f"Access denied for archetype '{archetype_id}'. "
+                "You must be the author or have purchased it in the AgentGuard marketplace."
+            ) from exc
+        if exc.code == 404:
+            raise KeyError(
+                f"Archetype '{archetype_id}' not found in the marketplace."
+            ) from exc
+        raise RuntimeError(
+            f"Marketplace API error {exc.code} while loading archetype "
+            f"'{archetype_id}': {exc.reason}"
+        ) from exc
+
+    yaml_content: str = data["yaml_content"]
+    content_hash: str | None = data.get("content_hash")
+    trust_level_str: str = data.get("trust_level", "community")
+
+    registry = get_archetype_registry()
+    trust_level = (
+        TrustLevel(trust_level_str)
+        if trust_level_str in TrustLevel.__members__
+        else TrustLevel.community
+    )
+
+    if content_hash:
+        entry = registry.register_remote(
+            archetype_id, yaml_content, content_hash, trust_level=trust_level
+        )
+    else:
+        # No hash provided — register without integrity verification
+        entry = registry.register_validated(yaml_content, trust_level=trust_level)
+
+    _marketplace_cache[archetype_id] = entry.archetype
+    logger.info(
+        "Loaded marketplace archetype '%s' (trust=%s)", archetype_id, trust_level_str
+    )
+    return entry.archetype
 
 
 def _get_prompt(template_id: str) -> Any:
