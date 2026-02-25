@@ -1,0 +1,75 @@
+id: "debug_backend"
+name: "Backend Debugger"
+description: "Debugging protocol for backend services: APIs, workers, databases, queues"
+version: "1.0.0"
+maturity: "production"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "fastapi"
+    database: "postgresql"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 2
+
+structure:
+  expected_dirs: []
+  expected_files: []
+
+validation:
+  checks: ["syntax", "imports", "structure"]
+  lint_rules: "ruff:default"
+  type_strictness: "basic"
+
+self_challenge:
+  criteria:
+    - "Root cause is identified with specific file and line reference"
+    - "Fix does not introduce new imports not already in the dependency manifest"
+    - "Fix does not change public API signatures unless that was the stated bug"
+    - "All affected call sites of the changed function are updated"
+    - "Regression test or reproduction case is described or written"
+    - "No secrets, tokens, or credentials are introduced or exposed in the fix"
+  grounding_check: true
+  assumptions_must_declare: true
+
+debug_config:
+  data_sources:
+    - "Application logs (stdout, stderr, structured log files)"
+    - "Stack trace or exception message provided by the user"
+    - "Relevant source files identified from the stack trace"
+    - "Database query logs or slow query log if DB is implicated"
+    - "HTTP request/response logs if API behaviour is implicated"
+    - "Environment variables and configuration files (redacted)"
+    - "Test output if a failing test was provided"
+    - "Dependency manifest (pyproject.toml, requirements.txt, package.json)"
+
+  hypothesis_protocol:
+    - "Identify the symptom: what is the observed vs expected behaviour"
+    - "Locate the failure boundary: which layer does the failure originate in (HTTP, service, DB, queue)"
+    - "Isolate the call path: trace from the entry point to where the behaviour diverges"
+    - "Form at most 3 ranked hypotheses, ordered by most likely root cause first"
+    - "For each hypothesis state: what evidence supports it, what would disprove it"
+    - "Select the highest-confidence hypothesis before writing any code"
+
+  fix_protocol:
+    - "Write the minimal change that addresses the root cause — do not refactor unrelated code"
+    - "Verify the fix does not break existing tests by reviewing test files for the changed function"
+    - "Describe a reproduction case (input → expected output → actual output before fix)"
+    - "Describe how to verify the fix is working in the target environment"
+    - "If the fix requires a migration or config change, state it explicitly"
+
+  escalation_criteria:
+    - "Root cause cannot be determined from the provided sources — request additional logs or traces"
+    - "Fix requires changing a database schema — escalate with the proposed migration SQL for review"
+    - "Fix requires changing a public API contract — escalate with the proposed diff for review"
+    - "The bug appears to be in a third-party dependency, not the project code"
+    - "The symptom is non-deterministic and cannot be reproduced with the available information"
+    - "The fix would affect more than 5 files or more than 3 layers — escalate with a plan first"

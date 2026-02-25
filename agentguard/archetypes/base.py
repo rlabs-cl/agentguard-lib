@@ -56,6 +56,53 @@ class SelfChallengeConfig:
 
 
 @dataclass
+class DebugConfig:
+    """Debugging protocol configuration.
+
+    Defines how the agent should approach debugging for this archetype's stack:
+    what data sources to consult, how to form and rank hypotheses, how to
+    validate a fix, and when to escalate rather than attempt a fix.
+    Each field is a guideline for the agent — not prescriptive code.
+    """
+
+    data_sources: list[str] = field(default_factory=list)
+    """Ordered list of sources the agent should consult: e.g. 'application logs',
+    'database query plan', 'network traces', 'component state snapshot'."""
+
+    hypothesis_protocol: list[str] = field(default_factory=list)
+    """Steps for narrowing from symptom to root cause."""
+
+    fix_protocol: list[str] = field(default_factory=list)
+    """Steps to validate a fix before declaring it resolved."""
+
+    escalation_criteria: list[str] = field(default_factory=list)
+    """Conditions under which the agent should stop and report to the user
+    rather than continuing to attempt a fix."""
+
+
+@dataclass
+class MigrationConfig:
+    """Migration protocol configuration.
+
+    Guides the agent when migrating an existing codebase toward this archetype.
+    Defines risk categories, concern surface areas, and a decision protocol
+    for when migration should pause and ask the user.
+    """
+
+    risk_areas: list[str] = field(default_factory=list)
+    """Domain areas where data loss, API breaks, or behaviour changes are likely."""
+
+    concern_protocol: list[str] = field(default_factory=list)
+    """Questions the agent must answer before committing to any migration step."""
+
+    incompatibility_signals: list[str] = field(default_factory=list)
+    """Patterns in the source that indicate migration may not be feasible as-is."""
+
+    step_order: list[str] = field(default_factory=list)
+    """Recommended order of migration steps for this target archetype."""
+
+
+@dataclass
 class Archetype:
     """A project archetype — blueprint that configures the entire pipeline.
 
@@ -84,6 +131,8 @@ class Archetype:
     self_challenge: SelfChallengeConfig = field(default_factory=SelfChallengeConfig)
     reference_patterns: list[str] = field(default_factory=list)
     infrastructure_files: list[str] = field(default_factory=list)
+    debug_config: DebugConfig = field(default_factory=DebugConfig)
+    migration_config: MigrationConfig = field(default_factory=MigrationConfig)
 
     @classmethod
     def load(cls, archetype_id: str, overrides: dict[str, Any] | None = None) -> Archetype:
@@ -185,6 +234,22 @@ def _from_dict(data: dict[str, Any]) -> Archetype:
         assumptions_must_declare=chall_data.get("assumptions_must_declare", True),
     )
 
+    dbg_data = data.get("debug_config", {})
+    debug_config = DebugConfig(
+        data_sources=dbg_data.get("data_sources", []),
+        hypothesis_protocol=dbg_data.get("hypothesis_protocol", []),
+        fix_protocol=dbg_data.get("fix_protocol", []),
+        escalation_criteria=dbg_data.get("escalation_criteria", []),
+    )
+
+    mig_data = data.get("migration_config", {})
+    migration_config = MigrationConfig(
+        risk_areas=mig_data.get("risk_areas", []),
+        concern_protocol=mig_data.get("concern_protocol", []),
+        incompatibility_signals=mig_data.get("incompatibility_signals", []),
+        step_order=mig_data.get("step_order", []),
+    )
+
     return Archetype(
         id=data.get("id", "unknown"),
         name=data.get("name", "Unknown"),
@@ -199,6 +264,8 @@ def _from_dict(data: dict[str, Any]) -> Archetype:
         self_challenge=challenge,
         reference_patterns=data.get("reference_patterns", []),
         infrastructure_files=data.get("infrastructure_files", []),
+        debug_config=debug_config,
+        migration_config=migration_config,
     )
 
 
