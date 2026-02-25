@@ -917,6 +917,19 @@ async def agentguard_benchmark_evaluate(
         }
         if archetype_yaml_for_upload:
             upload_body["archetype_yaml"] = archetype_yaml_for_upload
+        # Extract README from the most complex treatment run and surface it as
+        # long_description so the marketplace detail page can render it.
+        readme_content: str | None = None
+        for entry in reversed(results):  # most complex last in catalog order
+            tf: dict[str, str] = entry.get("treatment_files", {})
+            for path, content in tf.items():
+                if path.lower().endswith("readme.md") or path.lower() == "readme.md":
+                    readme_content = content
+                    break
+            if readme_content:
+                break
+        if readme_content:
+            upload_body["long_description"] = readme_content
         try:
             import httpx
             async with httpx.AsyncClient(timeout=15.0) as client:
