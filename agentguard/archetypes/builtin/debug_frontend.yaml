@@ -8,7 +8,7 @@ tech_stack:
   defaults:
     language: "typescript"
     framework: "react"
-    database: ""
+    database: "none"
     testing: "vitest"
     linter: "eslint"
     type_checker: "tsc"

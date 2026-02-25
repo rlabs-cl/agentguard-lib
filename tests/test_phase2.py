@@ -544,6 +544,178 @@ class TestMCPTools:
 
 
 # ================================================================== #
+#  7b. Agent-Native Tools (debug + migrate)
+# ================================================================== #
+
+
+class TestAgentNativeTools:
+    """Test agentguard_debug and agentguard_migrate agent-native tools."""
+
+    @pytest.mark.asyncio
+    async def test_debug_returns_protocol(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_debug
+
+        result = await agentguard_debug(symptom="500 Internal Server Error on POST /api/orders")
+        data = json.loads(result)
+
+        assert data["tool"] == "debug"
+        assert "symptom" in data
+        assert "debug_config" in data
+        assert "instructions" in data
+        assert "response_format" in data
+        assert data["symptom"] == "500 Internal Server Error on POST /api/orders"
+
+    @pytest.mark.asyncio
+    async def test_debug_loads_debug_backend_archetype(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_debug
+
+        result = await agentguard_debug(
+            symptom="DB connection timeout",
+            archetype="debug_backend",
+        )
+        data = json.loads(result)
+
+        cfg = data["debug_config"]
+        assert len(cfg["data_sources"]) > 0
+        assert len(cfg["hypothesis_protocol"]) > 0
+        assert len(cfg["fix_protocol"]) > 0
+        assert len(cfg["escalation_criteria"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_debug_loads_debug_frontend_archetype(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_debug
+
+        result = await agentguard_debug(
+            symptom="Component flickers on state update",
+            archetype="debug_frontend",
+        )
+        data = json.loads(result)
+
+        cfg = data["debug_config"]
+        assert len(cfg["data_sources"]) > 0
+        assert len(cfg["escalation_criteria"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_debug_with_provided_sources(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_debug
+
+        result = await agentguard_debug(
+            symptom="NullPointerException in payment flow",
+            sources={"app.log": "ERROR: NullPointerException at PaymentService.java:42"},
+        )
+        data = json.loads(result)
+
+        assert data["provided_sources"]["app.log"].startswith("ERROR:")
+
+    @pytest.mark.asyncio
+    async def test_debug_fallback_for_unknown_archetype(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_debug
+
+        # Unknown archetype — should fall back gracefully with default protocol
+        result = await agentguard_debug(
+            symptom="Something broke",
+            archetype="nonexistent_archetype_xyz",
+        )
+        data = json.loads(result)
+
+        cfg = data["debug_config"]
+        assert len(cfg["data_sources"]) > 0
+        assert "hypothesis_protocol" in cfg
+
+    @pytest.mark.asyncio
+    async def test_debug_response_format_contract(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_debug
+
+        result = await agentguard_debug(symptom="test")
+        data = json.loads(result)
+
+        fmt = data["response_format"]
+        assert "outcome" in fmt
+        assert "root_cause" in fmt
+        assert "fix" in fmt
+        assert "escalation" in fmt
+
+    @pytest.mark.asyncio
+    async def test_migrate_returns_protocol(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_migrate
+
+        result = await agentguard_migrate(
+            source_files={"app.py": "import flask\napp = flask.Flask(__name__)"},
+            target_archetype="api_backend",
+            spec="Migrate Flask app to FastAPI",
+        )
+        data = json.loads(result)
+
+        assert data["tool"] == "migrate"
+        assert data["target_archetype"] == "api_backend"
+        assert "migration_config" in data
+        assert "source_files_digest" in data
+        assert "instructions" in data
+        assert "response_format" in data
+
+    @pytest.mark.asyncio
+    async def test_migrate_digests_source_files(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_migrate
+
+        files = {
+            "main.py": "# entry\nprint('hello')",
+            "models.py": "class User:\n    pass",
+        }
+        result = await agentguard_migrate(source_files=files, target_archetype="api_backend")
+        data = json.loads(result)
+
+        digest = data["source_files_digest"]
+        paths_in_digest = [d["path"] for d in digest]
+        assert "main.py" in paths_in_digest
+        assert "models.py" in paths_in_digest
+
+        for entry in digest:
+            assert "lines" in entry
+            assert "preview" in entry
+
+    @pytest.mark.asyncio
+    async def test_migrate_includes_target_stack(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_migrate
+
+        result = await agentguard_migrate(
+            source_files={"app.py": "pass"},
+            target_archetype="api_backend",
+        )
+        data = json.loads(result)
+
+        stack = data["target_stack"]
+        assert stack["language"] == "python"
+        assert stack["framework"] == "fastapi"
+
+    @pytest.mark.asyncio
+    async def test_migrate_response_format_contract(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_migrate
+
+        result = await agentguard_migrate(source_files={}, target_archetype="api_backend")
+        data = json.loads(result)
+
+        fmt = data["response_format"]
+        assert "outcome" in fmt
+        assert "migrated_files" in fmt
+        assert "blocker_report" in fmt
+
+    @pytest.mark.asyncio
+    async def test_migrate_fallback_for_unknown_archetype(self) -> None:
+        from agentguard.mcp.agent_tools import agentguard_migrate
+
+        result = await agentguard_migrate(
+            source_files={"app.py": "pass"},
+            target_archetype="nonexistent_archetype_xyz",
+        )
+        data = json.loads(result)
+
+        # Should fall back gracefully with generic migration protocol
+        cfg = data["migration_config"]
+        assert len(cfg["risk_areas"]) > 0
+        assert len(cfg["step_order"]) > 0
+
+
+# ================================================================== #
 #  8. MCP Resources
 # ================================================================== #
 
