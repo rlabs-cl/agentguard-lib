@@ -78,117 +78,99 @@ async def agentguard_validate(
     files: dict[str, str],
     archetype: str = "api_backend",
 ) -> str:
-    """Return a structured validation prompt for the calling agent.
+    """Return the archetype config and files for the calling agent to derive
+    and execute its own validation criteria.
 
-    The agent performs the actual review using its own LLM and knowledge of
-    the language declared in the archetype.  No internal LLM or external tool
-    is invoked here — the archetype's own configuration drives what to check.
-
-    Returns a JSON object containing:
-    - tech_stack: the language, framework, linter, and type_checker from the archetype
-    - prerequisites: derived from the archetype's tech_stack — the agent determines
-      what local tooling is needed based on those values
-    - checks: the validation checks the archetype requires, with the archetype's
-      own lint rules and type strictness settings
-    - challenge_criteria: the archetype's self_challenge criteria
-    - expected_structure: dirs and files the archetype expects
-    - response_format: exact JSON shape the agent must return
-    - files: the code to review
+    The agent reads the archetype's declared tech_stack, validation checks,
+    lint rules, type strictness, expected structure, and self_challenge criteria,
+    then determines what those mean for that specific stack and evaluates the files.
+    No criteria are prescribed here — the agent generates them from the archetype config.
     """
     from agentguard.archetypes.base import Archetype
 
     try:
         arch = Archetype.load(archetype)
-        tech_stack = {
-            "language": arch.tech_stack.language,
-            "framework": arch.tech_stack.framework,
-            "database": arch.tech_stack.database,
-            "testing": arch.tech_stack.testing,
-            "linter": arch.tech_stack.linter,
-            "type_checker": arch.tech_stack.type_checker,
+        config = {
+            "tech_stack": {
+                "language": arch.tech_stack.language,
+                "framework": arch.tech_stack.framework,
+                "database": arch.tech_stack.database,
+                "testing": arch.tech_stack.testing,
+                "linter": arch.tech_stack.linter,
+                "type_checker": arch.tech_stack.type_checker,
+            },
+            "validation": {
+                "checks": arch.validation.checks,
+                "lint_rules": arch.validation.lint_rules,
+                "type_strictness": arch.validation.type_strictness,
+            },
+            "structure": {
+                "expected_dirs": arch.structure.get("expected_dirs", []),
+                "expected_files": arch.structure.get("expected_files", []),
+            },
+            "self_challenge_criteria": arch.self_challenge.criteria,
         }
-        checks = arch.validation.checks
-        lint_rules = arch.validation.lint_rules
-        type_strictness = arch.validation.type_strictness
-        expected_dirs = arch.structure.get("expected_dirs", [])
-        expected_files = arch.structure.get("expected_files", [])
-        challenge_criteria = arch.self_challenge.criteria
     except Exception:
-        tech_stack = {"language": archetype, "framework": "", "linter": "", "type_checker": ""}
-        checks = ["syntax", "lint", "types", "imports", "structure"]
-        lint_rules = "default"
-        type_strictness = "basic"
-        expected_dirs = []
-        expected_files = []
-        challenge_criteria = []
+        config = {
+            "tech_stack": {"language": archetype},
+            "validation": {"checks": ["syntax", "lint", "types", "imports", "structure"]},
+            "structure": {},
+            "self_challenge_criteria": [],
+        }
 
     return json.dumps(
         {
             "tool": "validate",
             "description": (
                 "Validation task for you (the calling agent). "
-                "Review the provided files against the archetype's declared checks "
-                "using your own LLM knowledge of the language. "
-                "YOU perform every check — do not delegate to another model."
+                "Using the archetype config below as your specification, derive the "
+                "appropriate validation criteria for this specific tech stack, then "
+                "evaluate the provided files against them. "
+                "YOU decide what each check means for this language and framework — "
+                "the archetype config is your source of truth."
             ),
-            "archetype": archetype,
-            "tech_stack": tech_stack,
-            "prerequisites": {
-                "note": (
-                    "Based on the tech_stack above, determine what local tooling "
-                    "is required to run this project (runtime, package manager, "
-                    f"linter: {tech_stack.get('linter')}, "
-                    f"type checker: {tech_stack.get('type_checker')}, "
-                    f"test runner: {tech_stack.get('testing')}). "
-                    "If those tools are available, run them and include the output. "
-                    "If not, perform the equivalent checks yourself using your language knowledge "
-                    "and note which tools were unavailable."
-                ),
-            },
-            "checks_required": checks,
-            "lint_rules": lint_rules,
-            "type_strictness": type_strictness,
-            "expected_structure": {
-                "dirs": expected_dirs,
-                "files": expected_files,
-            },
-            "challenge_criteria": challenge_criteria,
+            "instructions": [
+                "Read the archetype config (tech_stack, validation, structure, self_challenge_criteria).",
+                "For each entry in validation.checks, determine what that check means for "
+                "this specific stack (e.g. 'lint' for a ruff+python project means different "
+                "rules than for an eslint+typescript project — you decide based on the config).",
+                "Evaluate the files against the criteria you derived.",
+                "For structure checks, compare the file paths against expected_dirs and expected_files.",
+                "For self_challenge_criteria, evaluate each criterion against the files.",
+                "If any native tooling (linter, type checker, test runner) can be run locally, "
+                "do so and include the raw output in your response.",
+                "Return your results in the response_format below.",
+            ],
+            "archetype_config": config,
             "scoring": {
-                "scale": {
-                    "0": "Critical failure — blocking issue, must be fixed before shipping",
-                    "1": "Warning — issue present but project can run",
-                    "2": "Acceptable — minor imperfection, non-blocking",
-                    "3": "Clean — fully satisfies the check",
-                },
-                "blocking_threshold": (
-                    "A check is blocking when score <= 1. "
-                    "Overall passed = no blocking check scored below 2."
-                ),
+                "0": "Critical failure — blocking, must be fixed before shipping",
+                "1": "Warning — issue present but project can run",
+                "2": "Acceptable — minor imperfection, non-blocking",
+                "3": "Clean — fully satisfies the check",
+                "blocking_rule": "passed=false if any check with a blocking nature scores 0 or 1",
             },
             "response_format": {
-                "description": "Return this exact JSON structure after completing your review.",
-                "schema": {
-                    "passed": "boolean — true only if no blocking check scored below 2",
-                    "blocking_failures": "integer — count of blocking checks that scored 0 or 1",
-                    "checks_results": [
-                        {
-                            "check": "string — matches an entry in checks_required",
-                            "score": "integer 0-3",
-                            "level": "one of: critical_fail | warning | acceptable | clean",
-                            "tool_output": "string | null — raw output if a native tool was run",
-                            "findings": "string — what you found, be specific (file and line if relevant)",
-                            "fix_suggestion": "string | null — concrete fix if score < 3, else null",
-                        }
-                    ],
-                    "criteria_results": [
-                        {
-                            "criterion": "string — the exact criterion text from challenge_criteria",
-                            "passed": "boolean",
-                            "explanation": "string",
-                        }
-                    ],
-                    "overall_notes": "string — summary of the most important findings",
-                },
+                "passed": "boolean",
+                "blocking_failures": "integer",
+                "checks_results": [
+                    {
+                        "check": "string — from validation.checks",
+                        "criteria_derived": "string — the criteria you determined for this stack",
+                        "score": "integer 0-3",
+                        "level": "critical_fail | warning | acceptable | clean",
+                        "tool_output": "string | null — raw output if a native tool was run",
+                        "findings": "string — specific file and line if relevant",
+                        "fix_suggestion": "string | null",
+                    }
+                ],
+                "criteria_results": [
+                    {
+                        "criterion": "string — exact text from self_challenge_criteria",
+                        "passed": "boolean",
+                        "explanation": "string",
+                    }
+                ],
+                "overall_notes": "string",
             },
             "files": files,
         },
