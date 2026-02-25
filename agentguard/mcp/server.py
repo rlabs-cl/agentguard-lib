@@ -49,9 +49,11 @@ def _create_mcp_server() -> Any:
         agentguard_benchmark_evaluate,
         agentguard_contracts,
         agentguard_contracts_and_wiring,
+        agentguard_debug,
         agentguard_digest,
         agentguard_get_challenge_criteria,
         agentguard_logic,
+        agentguard_migrate,
         agentguard_skeleton,
         agentguard_wiring,
     )
@@ -210,6 +212,38 @@ def _create_mcp_server() -> Any:
             spec_source=spec_source,
             run_by=run_by,
             notes=notes,
+        )
+
+    @mcp.tool()
+    async def debug(
+        symptom: str,
+        archetype: str = "debug_backend",
+        sources: dict[str, str] | None = None,
+    ) -> str:
+        """Return a structured debugging protocol for you (the calling agent) to execute.
+        Loads the archetype's debug_config (data_sources, hypothesis_protocol,
+        fix_protocol, escalation_criteria) and packages it with the reported symptom
+        and any evidence collected.  YOU follow the protocol — form hypotheses,
+        select the root cause, write a minimal fix, or escalate.
+        No API key needed."""
+        return await agentguard_debug(
+            symptom=symptom, archetype=archetype, sources=sources,
+        )
+
+    @mcp.tool()
+    async def migrate(
+        source_files: dict[str, str],
+        target_archetype: str = "api_backend",
+        spec: str = "",
+    ) -> str:
+        """Return a structured migration plan for you (the calling agent) to execute.
+        Loads the target archetype's migration_config (risk_areas, concern_protocol,
+        incompatibility_signals, step_order), digests the source files, and returns
+        a protocol YOU follow: answer the concern checklist, flag incompatibilities,
+        then port the code step by step.
+        No API key needed."""
+        return await agentguard_migrate(
+            source_files=source_files, target_archetype=target_archetype, spec=spec,
         )
 
     # ── Utility tools (pure computation, no LLM) ──────────────────

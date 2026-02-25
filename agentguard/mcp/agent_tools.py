@@ -670,7 +670,249 @@ async def agentguard_digest(
     )
 
 
-# ── 8. benchmark (agent-native, two-step) ─────────────────────────
+# ── 8. debug (agent-native) ────────────────────────────────────────
+
+async def agentguard_debug(
+    symptom: str,
+    archetype: str = "debug_backend",
+    sources: dict[str, str] | None = None,
+) -> str:
+    """Return a structured debugging protocol for the calling agent to execute.
+
+    Loads the archetype's ``debug_config`` (data_sources, hypothesis_protocol,
+    fix_protocol, escalation_criteria) and packages it with the reported symptom
+    and any evidence the caller has already collected.  The agent follows the
+    returned protocol — consulting sources, forming hypotheses, selecting the
+    most likely root cause, proposing a minimal fix, or escalating when the
+    criteria are met.
+
+    No API key needed — YOU (the agent) do the debugging.
+    """
+    try:
+        arch = _load_arch(archetype)
+        dbg = arch.debug_config
+        debug_config: dict[str, Any] = {
+            "data_sources": dbg.data_sources,
+            "hypothesis_protocol": dbg.hypothesis_protocol,
+            "fix_protocol": dbg.fix_protocol,
+            "escalation_criteria": dbg.escalation_criteria,
+        }
+    except Exception:
+        debug_config = {
+            "data_sources": [
+                "application logs",
+                "stack traces / error messages",
+                "environment variables and config",
+                "recent git diff",
+                "relevant test output",
+            ],
+            "hypothesis_protocol": [
+                "Restate the symptom in one sentence.",
+                "Identify the system boundary where the failure manifests.",
+                "Trace the call path from entry point to failure site.",
+                "List ≤5 hypotheses ordered by likelihood.",
+                "For each hypothesis, state the evidence that would confirm or refute it.",
+                "Select the highest-confidence hypothesis and proceed to fix_protocol.",
+            ],
+            "fix_protocol": [
+                "Make the minimal change that addresses the root cause.",
+                "Verify that existing tests still pass.",
+                "Add a regression test that would have caught this bug.",
+                "Describe the reproduction steps and the fix in a short comment.",
+            ],
+            "escalation_criteria": [
+                "Root cause is indeterminate after exhausting all data_sources.",
+                "Fix requires a schema migration or breaking API change.",
+                "Issue originates in a third-party dependency.",
+                "Failure is non-deterministic or environment-specific.",
+            ],
+        }
+
+    return json.dumps(
+        {
+            "tool": "debug",
+            "description": (
+                "Structured debugging protocol for you (the calling agent) to execute. "
+                "Follow the steps below to diagnose the reported symptom and produce a fix "
+                "or an escalation report.  Do NOT delegate to any external model — you do "
+                "the debugging yourself."
+            ),
+            "symptom": symptom,
+            "provided_sources": sources or {},
+            "debug_config": debug_config,
+            "instructions": [
+                "Review all keys in `provided_sources` for initial evidence.",
+                "Work through `debug_config.data_sources` in order — if a source is not "
+                "available, note it as unavailable and continue.",
+                "Follow `debug_config.hypothesis_protocol` step by step.",
+                "Before proposing a fix, check each item in `debug_config.escalation_criteria`. "
+                "If any criterion is met, STOP and return an escalation report instead.",
+                "If no escalation is triggered, follow `debug_config.fix_protocol` to produce "
+                "a minimal, tested fix.",
+            ],
+            "response_format": {
+                "outcome": "fix | escalation",
+                "root_cause": "string — one sentence",
+                "confidence": "high | medium | low",
+                "hypotheses_considered": [
+                    {
+                        "hypothesis": "string",
+                        "evidence": "string",
+                        "verdict": "confirmed | refuted | inconclusive",
+                    }
+                ],
+                "fix": {
+                    "description": "string | null",
+                    "files_changed": [{"path": "string", "change": "string"}],
+                    "regression_test": "string | null",
+                },
+                "escalation": {
+                    "reason": "string | null",
+                    "matched_criterion": "string | null",
+                    "recommended_next_step": "string | null",
+                },
+                "data_sources_consulted": ["string"],
+                "data_sources_unavailable": ["string"],
+            },
+        },
+        indent=2,
+    )
+
+
+# ── 9. migrate (agent-native) ──────────────────────────────────────
+
+async def agentguard_migrate(
+    source_files: dict[str, str],
+    target_archetype: str = "api_backend",
+    spec: str = "",
+) -> str:
+    """Return a structured migration plan for the calling agent to execute.
+
+    Loads the target archetype's ``migration_config`` (risk_areas,
+    concern_protocol, incompatibility_signals, step_order) and produces a
+    migration analysis: a digest of what the source files contain, a concern
+    checklist the agent must answer, incompatibility flags, and an ordered
+    migration plan.  The agent follows the protocol and either produces a
+    migration or reports blockers.
+
+    No API key needed — YOU (the agent) do the migration work.
+    """
+    try:
+        arch = _load_arch(target_archetype)
+        mig = arch.migration_config
+        migration_config: dict[str, Any] = {
+            "risk_areas": mig.risk_areas,
+            "concern_protocol": mig.concern_protocol,
+            "incompatibility_signals": mig.incompatibility_signals,
+            "step_order": mig.step_order,
+        }
+        target_stack: dict[str, Any] = {
+            "language": arch.tech_stack.language,
+            "framework": arch.tech_stack.framework,
+            "testing": arch.tech_stack.testing,
+            "linter": arch.tech_stack.linter,
+            "type_checker": arch.tech_stack.type_checker,
+        }
+    except Exception:
+        migration_config = {
+            "risk_areas": [
+                "data access patterns and ORM usage",
+                "authentication and authorization logic",
+                "external API integrations",
+                "configuration and environment variable surface",
+                "runtime dependencies and version constraints",
+            ],
+            "concern_protocol": [
+                "Does the source project have passing tests that document current behaviour?",
+                "Are there any undocumented side effects (cron jobs, background tasks, webhooks)?",
+                "Are there database schema migrations that need to run before the new code?",
+                "What is the rollback plan if the new version breaks in production?",
+            ],
+            "incompatibility_signals": [
+                "Global mutable state that spans request boundaries",
+                "Synchronous blocking I/O in an async target framework",
+                "Direct SQL strings in non-ORM source mixed with ORM target",
+                "Hardcoded host/port constants that conflict with target config model",
+            ],
+            "step_order": [
+                "Audit source — build digest, identify risk areas",
+                "Answer concern_protocol questions before proceeding",
+                "Flag and resolve incompatibility_signals",
+                "Scaffold target structure using the `skeleton` tool",
+                "Port logic module by module, smallest first",
+                "Re-run source tests against migrated code",
+                "Update configuration and environment variables",
+                "Write migration-specific tests for changed behaviour",
+            ],
+        }
+        target_stack = {"language": target_archetype}
+
+    # Produce a compact digest of the source files for the agent
+    source_summary: list[dict[str, Any]] = []
+    for path, content in (source_files or {}).items():
+        lines = content.splitlines()
+        source_summary.append(
+            {
+                "path": path,
+                "lines": len(lines),
+                "preview": "\n".join(lines[:8]) + ("\n..." if len(lines) > 8 else ""),
+            }
+        )
+
+    return json.dumps(
+        {
+            "tool": "migrate",
+            "description": (
+                "Structured migration protocol for you (the calling agent) to execute. "
+                "Analyse the source files, answer the concern_protocol checklist, flag any "
+                "incompatibility_signals, then follow the step_order to produce the migrated "
+                "codebase targeting the archetype below.  Do NOT delegate to any external "
+                "model — you do the migration work yourself."
+            ),
+            "target_archetype": target_archetype,
+            "target_stack": target_stack,
+            "spec": spec,
+            "source_files_digest": source_summary,
+            "migration_config": migration_config,
+            "instructions": [
+                "Read source_files_digest to understand what exists.",
+                "For each item in migration_config.incompatibility_signals, check whether it "
+                "appears in the source files.  Note any that are present as blockers.",
+                "Work through migration_config.concern_protocol — answer each question. "
+                "If any answer reveals a blocker, STOP and return a blocker report.",
+                "If no blockers, follow migration_config.step_order in sequence.",
+                "For the scaffold step, call the `skeleton` tool with the spec and target_archetype.",
+                "Port logic incrementally, file by file, confirming tests pass at each step.",
+                "Return the migrated files and a change summary in the response_format below.",
+            ],
+            "response_format": {
+                "outcome": "completed | blocked",
+                "concern_answers": [
+                    {"question": "string", "answer": "string", "is_blocker": "boolean"}
+                ],
+                "incompatibilities_found": [
+                    {"signal": "string", "location": "string", "resolution": "string | null"}
+                ],
+                "migrated_files": {"<path>": "<content>"},
+                "change_summary": [
+                    {
+                        "file": "string",
+                        "change_type": "created | modified | deleted | unchanged",
+                        "notes": "string",
+                    }
+                ],
+                "blocker_report": {
+                    "reason": "string | null",
+                    "unresolved_concerns": ["string"],
+                    "recommended_next_step": "string | null",
+                },
+            },
+        },
+        indent=2,
+    )
+
+
+# ── 10. benchmark (agent-native, two-step) ────────────────────────
 
 async def agentguard_benchmark(
     archetype: str = "api_backend",
