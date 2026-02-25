@@ -8,20 +8,25 @@
 [![Typed](https://img.shields.io/badge/typing-typed-blue)](https://github.com/rlabs-cl/agentguard-lib)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
 
-> A quality-assurance engine for LLM-generated code.
+> A quality-assurance engine for LLM-generated outputs.
+> Use it for code, architecture proposals, migration plans, debugging sessions — any structured problem where a disciplined process improves quality.
 > Python engine + HTTP protocol + MCP server + thin SDKs for any language.
 
 ---
 
 ## What It Does
 
-AgentGuard sits between your AI coding agent and the LLM, ensuring that every piece of generated code is:
+AgentGuard adds a disciplined process layer on top of LLM generation — for code, debugging sessions, migrations, and any structured problem where quality and reproducibility matter:
 
-- **Structurally sound** — Parses, lints, type-checks before any human sees it
+- **Structurally sound** — Parses, lints, type-checks before any human sees generated code
 - **Properly scoped** — Project archetypes prevent over/under-engineering
 - **Built top-down** — Skeleton → contracts → wiring → logic (general to particular)
 - **Self-verified** — The LLM reviews its own output against explicit criteria
 - **Cost-tracked** — Every token, every dollar, every model comparison — visible
+- **Debug-ready** — Structured debugging protocols guide hypothesis formation and escalation
+- **Migration-aware** — Concern checklists and incompatibility detection before any code moves
+
+> **Beyond code:** AgentGuard works for any structured problem — architecture proposals, API design reviews, codebase migrations, debugging sessions. Archetypes define the protocol; the host LLM does the work.
 
 ---
 
@@ -94,6 +99,8 @@ An **archetype** is a project blueprint that configures the entire pipeline. It 
 | `web_app` | Full-stack app (React + API) | Python + TS | production |
 | `library` | Reusable package with public API | Python | production |
 | `react_spa` | Client-side SPA with routing, state, i18n | TypeScript | production |
+| `debug_backend` | Debugging protocol for Python/FastAPI services | Python | — |
+| `debug_frontend` | Debugging protocol for React/TypeScript frontends | TypeScript | — |
 
 Pick the archetype that matches your project. Production archetypes generate more infrastructure (error boundaries, logging, code-splitting, constants) — this is intentional.
 
@@ -287,7 +294,7 @@ No API key is needed for the agent-native tools — the host LLM does all the ge
 
 #### MCP Tools Reference
 
-The MCP server exposes **15 tools** in three categories:
+The MCP server exposes **17 tools** in three categories:
 
 **Agent-native tools (no API key needed — the host LLM does the work):**
 
@@ -301,6 +308,8 @@ The MCP server exposes **15 tools** in three categories:
 | `get_challenge_criteria` | Review | Archetype-specific quality checklist (30+ criteria for `react_spa`) with review format instructions |
 | `digest` | Review | Compact project summary (~200 lines) for efficient self-challenge without re-reading every file |
 | `validate` | Check | Structural validation: syntax, lint, types, imports — returns pass/fail with details |
+| `debug` | Debug | Structured debugging protocol: load data sources → form hypotheses → minimal fix or escalation report |
+| `migrate` | Migrate | Migration plan: digest source files → concern checklist → incompatibility flags → step-by-step port |
 | `list_archetypes` | Info | Names and descriptions of all available archetypes |
 | `get_archetype` | Info | Full archetype config: tech stack, validation rules, challenge criteria, infrastructure files |
 | `trace_summary` | Info | Summary of the last generation: LLM calls, tokens, cost |
