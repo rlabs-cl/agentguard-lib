@@ -720,14 +720,23 @@ async def agentguard_benchmark(
             "total_specs": len(spec_list),
             "specs": spec_list,
             "instructions": {
+                "important": (
+                    "YOU (the calling agent) must generate ALL code yourself using "
+                    "your own LLM capabilities. Do NOT call the `generate` or "
+                    "`challenge` MCP tools — those require a separate API key and "
+                    "are only for headless pipelines with no agent. "
+                    "AgentGuard MCP tools only provide STRUCTURE (prompts, skeletons, "
+                    "criteria) — the thinking and code generation is always done by you."
+                ),
                 "control": (
-                    "For each spec, generate production code directly from "
-                    "the spec text alone (no AgentGuard tools). Return the "
+                    "For each spec, write production code yourself directly from "
+                    "the spec text alone — no MCP tools at all. Return the "
                     "files as a dict mapping filepath → content."
                 ),
                 "treatment": (
-                    "For each spec, use the full AgentGuard workflow: "
-                    "skeleton → contracts_and_wiring → logic → validate. "
+                    "For each spec, use the AgentGuard structural tools yourself: "
+                    "call skeleton → contracts_and_wiring → logic → validate, "
+                    "then write the code following the instructions they return. "
                     "Return the files as a dict mapping filepath → content."
                 ),
                 "evaluate": (
@@ -736,9 +745,9 @@ async def agentguard_benchmark(
                 ),
             },
             "next_step": (
-                "Start with the first spec. Generate CONTROL code (no tools), "
-                "then TREATMENT code (with AgentGuard tools). Repeat for each "
-                "spec, then call `benchmark_evaluate` with all results."
+                "Start with the first spec. Write CONTROL code yourself (no tools), "
+                "then write TREATMENT code yourself guided by AgentGuard structural "
+                "tools. Repeat for each spec, then call `benchmark_evaluate`."
             ),
         },
         indent=2,

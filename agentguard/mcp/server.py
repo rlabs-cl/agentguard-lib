@@ -258,8 +258,9 @@ def _create_mcp_server() -> Any:
         archetype: str = "api_backend",
         llm: str = "anthropic/claude-sonnet-4-20250514",
     ) -> str:
-        """[Requires API key] Generate code using AgentGuard's internal LLM pipeline.
-        Prefer the agent-native tools (skeleton→contracts→wiring→logic) instead."""
+        """[DO NOT CALL FROM AN AGENT] Headless pipeline only — requires a separate LLM API key.
+        If you are an LLM agent, generate the code yourself using the structural tools:
+        skeleton → contracts_and_wiring → logic. This tool is only for CLI/scripts with no agent."""
         return await agentguard_generate(spec=spec, archetype=archetype, llm=llm)
 
     @mcp.tool()
@@ -268,8 +269,8 @@ def _create_mcp_server() -> Any:
         criteria: list[str] | None = None,
         llm: str = "anthropic/claude-sonnet-4-20250514",
     ) -> str:
-        """[Requires API key] LLM-based self-review using AgentGuard's internal LLM.
-        Prefer get_challenge_criteria + your own review instead."""
+        """[DO NOT CALL FROM AN AGENT] Headless pipeline only — requires a separate LLM API key.
+        If you are an LLM agent, review the code yourself using get_challenge_criteria instead."""
         return await agentguard_challenge(code=code, criteria=criteria, llm=llm)
 
     # ── Register resources ─────────────────────────────────────────
