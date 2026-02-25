@@ -15,6 +15,17 @@ v1.1 Changes:
 - ``digest`` generates a compact project-level summary for self-challenge.
 - ``get_challenge_criteria`` now embeds criteria from the archetype config
   (cached — no need to call separately after ``get_archetype``).
+
+v1.2 Changes:
+- ``debug`` returns a structured debugging protocol (data_sources →
+  hypothesis_protocol → fix_protocol → escalation_criteria) loaded from the
+  target archetype's ``debug_config`` block.  Builtin archetypes:
+  ``debug_backend`` (Python/FastAPI) and ``debug_frontend`` (React/TypeScript).
+  Falls back to a sensible default protocol when the archetype has no
+  ``debug_config``.
+- ``migrate`` returns a structured migration plan including a source-file
+  digest, concern checklist, incompatibility signals, and step_order — all
+  loaded from the target archetype's ``migration_config`` block.
 """
 
 from __future__ import annotations
