@@ -393,7 +393,7 @@ class TestMCPConfiguration:
         assert "agentguard" in data["servers"]
         server = data["servers"]["agentguard"]
         assert server["type"] == "stdio"
-        assert "mcp-serve" in server["args"]
+        assert "agentguard.mcp.server" in server["args"]
 
     def test_mcp_server_creates_successfully(self) -> None:
         """Verify the MCP server object can be created with all tools."""
@@ -419,7 +419,10 @@ class TestMCPConfiguration:
         assert "challenge" in tool_names
         # Benchmark tool
         assert "benchmark" in tool_names
-        assert len(tool_names) == 15
+        # Debug/migrate tools
+        assert "debug" in tool_names
+        assert "migrate" in tool_names
+        assert len(tool_names) == 17
 
 
 # ================================================================== #
@@ -462,7 +465,11 @@ class TestMCPToolsE2E:
             archetype="script",
         )
         data = json.loads(result)
-        assert data["passed"] is True
+        # agentguard_validate is agent-delegated: returns a structured prompt, not a result
+        assert data["tool"] == "validate"
+        assert "archetype_config" in data
+        assert "response_format" in data
+        assert "hello.py" in data["files"]
 
     @pytest.mark.asyncio
     async def test_validate_failing(self) -> None:
@@ -473,8 +480,10 @@ class TestMCPToolsE2E:
             archetype="script",
         )
         data = json.loads(result)
-        assert data["passed"] is False
-        assert len(data["errors"]) > 0
+        # agent-delegated: the function packages the files for the agent to evaluate
+        assert data["tool"] == "validate"
+        assert "archetype_config" in data
+        assert "broken.py" in data["files"]
 
     @pytest.mark.asyncio
     async def test_get_archetype_not_found(self) -> None:
