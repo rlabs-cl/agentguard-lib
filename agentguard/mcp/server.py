@@ -228,8 +228,10 @@ def _create_mcp_server() -> Any:
         files: dict[str, str],
         archetype: str = "api_backend",
     ) -> str:
-        """Run structural validation on code: syntax, lint, types, imports, structure.
-        Returns a pass/fail report with details. No API key needed."""
+        """Return a structured validation prompt for you (the calling agent) to execute.
+        Includes language-specific criteria (scored 0-3), environment prerequisites,
+        expected structure from the archetype, and the exact response format to return.
+        YOU review the files and return the scored results — no internal tools invoked."""
         return await agentguard_validate(files=files, archetype=archetype)
 
     @mcp.tool()
