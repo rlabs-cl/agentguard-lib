@@ -256,22 +256,20 @@ def _create_mcp_server() -> Any:
     async def generate(
         spec: str,
         archetype: str = "api_backend",
-        llm: str = "anthropic/claude-sonnet-4-20250514",
     ) -> str:
-        """[DO NOT CALL FROM AN AGENT] Headless pipeline only — requires a separate LLM API key.
-        If you are an LLM agent, generate the code yourself using the structural tools:
-        skeleton → contracts_and_wiring → logic. This tool is only for CLI/scripts with no agent."""
-        return await agentguard_generate(spec=spec, archetype=archetype, llm=llm)
+        """Return structured generation instructions for you (the calling agent) to execute.
+        YOU generate all code using your own LLM by following the returned workflow:
+        skeleton → contracts_and_wiring → logic → validate → get_challenge_criteria."""
+        return await agentguard_generate(spec=spec, archetype=archetype)
 
     @mcp.tool()
     async def challenge(
         code: str,
         criteria: list[str] | None = None,
-        llm: str = "anthropic/claude-sonnet-4-20250514",
     ) -> str:
-        """[DO NOT CALL FROM AN AGENT] Headless pipeline only — requires a separate LLM API key.
-        If you are an LLM agent, review the code yourself using get_challenge_criteria instead."""
-        return await agentguard_challenge(code=code, criteria=criteria, llm=llm)
+        """Return a structured self-review prompt for you (the calling agent) to execute.
+        YOU review the code using your own LLM against the returned criteria."""
+        return await agentguard_challenge(code=code, criteria=criteria)
 
     # ── Register resources ─────────────────────────────────────────
 

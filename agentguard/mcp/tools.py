@@ -16,25 +16,59 @@ logger = logging.getLogger(__name__)
 async def agentguard_generate(
     spec: str,
     archetype: str = "api_backend",
-    llm: str = "anthropic/claude-sonnet-4-20250514",
+    llm: str = "",  # ignored — the calling agent uses its own LLM
 ) -> str:
-    """Generate production-quality code from a spec using top-down generation,
-    structural validation, and self-challenge.
+    """Return structured generation instructions for the calling agent.
 
-    Returns a JSON object with generated files and trace summary.
+    Instead of calling an internal LLM, this returns the prompts and
+    workflow the calling agent should follow to generate code itself using
+    its own configured LLM.  The agent always does the thinking.
+
+    Returns a JSON object with next-step instructions for the full pipeline:
+    skeleton → contracts_and_wiring → logic → validate.
     """
-    from agentguard.pipeline import Pipeline
-
-    pipe = Pipeline(archetype=archetype, llm=llm)
-    result = await pipe.generate(spec)
-
-    files = result.files
-    cost = float(result.total_cost.total_cost)
     return json.dumps(
         {
-            "files": files,
-            "file_count": len(files),
-            "total_cost_usd": f"${cost:.4f}",
+            "tool": "generate",
+            "description": (
+                "Structured generation workflow for you (the calling agent) to execute "
+                "using your own LLM. Do NOT delegate to any external model — you generate "
+                "all code yourself by following these steps in order."
+            ),
+            "spec": spec,
+            "archetype": archetype,
+            "steps": [
+                {
+                    "step": 1,
+                    "action": "Call `skeleton` with the spec and archetype to get the file tree.",
+                },
+                {
+                    "step": 2,
+                    "action": (
+                        "Call `contracts_and_wiring` with the skeleton JSON to get "
+                        "typed stubs and import wiring instructions per file."
+                    ),
+                },
+                {
+                    "step": 3,
+                    "action": (
+                        "For each non-trivial function, call `logic` to get implementation "
+                        "instructions, then write the full function body yourself."
+                    ),
+                },
+                {
+                    "step": 4,
+                    "action": "Call `validate` on all generated files to catch syntax/import issues.",
+                },
+                {
+                    "step": 5,
+                    "action": (
+                        "Call `get_challenge_criteria` for the archetype, then self-review "
+                        "your generated code against each criterion and fix any issues."
+                    ),
+                },
+            ],
+            "next_step": "Call `skeleton` now with spec and archetype to begin.",
         },
         indent=2,
     )
@@ -84,38 +118,39 @@ async def agentguard_validate(
 async def agentguard_challenge(
     code: str,
     criteria: list[str] | None = None,
-    llm: str = "anthropic/claude-sonnet-4-20250514",
+    llm: str = "",  # ignored — the calling agent uses its own LLM
 ) -> str:
-    """LLM-based self-review: checks code against quality criteria.
+    """Return a self-review prompt for the calling agent.
 
-    Returns issues found and suggested fixes.
+    Instead of calling an internal LLM, this packages the code and criteria
+    into a structured review task that the calling agent executes itself using
+    its own configured LLM.  The agent always does the thinking.
+
+    Returns a JSON object with the code and criteria for the agent to review.
     """
-    from agentguard.challenge.challenger import SelfChallenger
-    from agentguard.llm.factory import create_llm_provider
-
-    provider = create_llm_provider(llm)
-    challenger = SelfChallenger(llm=provider)
-
-    result = await challenger.challenge(
-        output=code,
-        criteria=criteria or [],
-        task_description="Code review via MCP",
-    )
-
+    review_criteria = criteria or [
+        "No hardcoded secrets, credentials, or environment-specific values",
+        "All imports are used and resolvable",
+        "Error handling present on all I/O and external calls",
+        "Functions have type annotations",
+        "No dead code or TODO stubs left in production paths",
+        "Consistent naming conventions throughout",
+    ]
     return json.dumps(
         {
-            "passed": result.passed,
-            "criteria_results": [
-                {
-                    "criterion": c.criterion,
-                    "passed": c.passed,
-                    "explanation": c.explanation,
-                }
-                for c in result.criteria_results
-            ],
-            "assumptions": result.assumptions,
-            "grounding_violations": result.grounding_violations,
-            "feedback": result.feedback,
+            "tool": "challenge",
+            "description": (
+                "Self-review task for you (the calling agent). Review the provided code "
+                "against each criterion using your own judgment. Do NOT delegate to any "
+                "external model — you perform the review."
+            ),
+            "instructions": (
+                "For each criterion below, assess the code and respond with: "
+                "PASS or FAIL, a one-sentence explanation, and a suggested fix if FAIL. "
+                "Then provide an overall verdict and a summary of required changes."
+            ),
+            "criteria": review_criteria,
+            "code_to_review": code,
         },
         indent=2,
     )
