@@ -202,25 +202,40 @@ class TestPlatformClientMarketplace:
     @pytest.mark.asyncio
     async def test_download_archetype(self) -> None:
         client = _make_client()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
+
+        # Step 1 mock: POST /download-token returns a token
+        token_resp = MagicMock()
+        token_resp.json = MagicMock(return_value={"download_token": "tok.abc.xyz"})
+        token_resp.raise_for_status = MagicMock()
+
+        # Step 2 mock: GET /content returns actual YAML
+        content_resp = MagicMock()
+        content_resp.json = MagicMock(return_value={
             "slug": "premium",
             "yaml_content": "id: premium\nname: Premium\n",
             "content_hash": "abc123",
             "trust_level": "community",
-        }
-        mock_resp.raise_for_status = MagicMock()
+        })
+        content_resp.raise_for_status = MagicMock()
 
         mock_http = AsyncMock()
-        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_http.post = AsyncMock(return_value=token_resp)
+        mock_http.get = AsyncMock(return_value=content_resp)
         client._http = mock_http
 
         result = await client.download_archetype("premium")
         assert result["yaml_content"].startswith("id: premium")
         assert result["content_hash"] == "abc123"
 
-        call_url = mock_http.get.call_args[0][0]
-        assert "/api/engine/archetypes/premium/download" in call_url
+        # Assert Step 1: POST to download-token endpoint
+        post_url = mock_http.post.call_args[0][0]
+        assert "/api/engine/archetypes/premium/download-token" in post_url
+
+        # Assert Step 2: GET to content endpoint with token param
+        get_url = mock_http.get.call_args[0][0]
+        assert "/api/engine/archetypes/premium/content" in get_url
+        get_params = mock_http.get.call_args[1].get("params", {})
+        assert get_params.get("token") == "tok.abc.xyz"
 
         await client.close()
 
@@ -524,8 +539,9 @@ class TestEngineRouterImport:
         from app.routers.engine import router
 
         assert router is not None
-        # Check expected routes exist
+        # Check expected routes exist (two-step secure download flow)
         paths = [r.path for r in router.routes]
         assert "/validate" in paths
         assert "/license/{slug}" in paths
-        assert "/archetypes/{slug}/download" in paths
+        assert "/archetypes/{slug}/download-token" in paths
+        assert "/archetypes/{slug}/content" in paths
