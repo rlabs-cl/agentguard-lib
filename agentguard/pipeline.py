@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from agentguard.archetypes.registry import get_archetype_registry
+from agentguard.archetypes.schema import TrustLevel
 from agentguard.challenge.challenger import SelfChallenger
 from agentguard.challenge.types import ChallengeResult
 from agentguard.llm.factory import create_llm_provider
@@ -122,6 +123,17 @@ class Pipeline:
 
         # Platform usage reporting
         self._platform: PlatformClient | None = None
+
+        # Only report usage when the archetype comes from the marketplace
+        # (trust_level != official).  Built-in archetypes are free tooling;
+        # marketplace archetypes represent purchased/published IP.
+        _reg = get_archetype_registry()
+        try:
+            _entry = _reg.get_entry(self._archetype.id)
+            self._is_marketplace_archetype = _entry.trust_level != TrustLevel.official
+        except KeyError:
+            self._is_marketplace_archetype = False
+
         if report_usage is not False:
             try:
                 from agentguard.platform.client import PlatformClient as _PC
@@ -197,7 +209,7 @@ class Pipeline:
         gen_duration_ms = int((_time.perf_counter() - gen_start) * 1000)
 
         # Report generation event to platform
-        if self._platform:
+        if self._platform and self._is_marketplace_archetype:
             summary = result.trace.summary() if result.trace else None
             await self._platform.track(
                 self._platform.build_generation_event(
@@ -236,7 +248,7 @@ class Pipeline:
                 )
 
             # Report validation event
-            if self._platform:
+            if self._platform and self._is_marketplace_archetype:
                 await self._platform.track(
                     self._platform.build_validation_event(
                         archetype=self._archetype.id,
@@ -269,7 +281,7 @@ class Pipeline:
                     )
 
                 # Report challenge event
-                if self._platform:
+                if self._platform and self._is_marketplace_archetype:
                     await self._platform.track(
                         self._platform.build_challenge_event(
                             archetype=self._archetype.id,
@@ -287,7 +299,7 @@ class Pipeline:
         self._tracer.finish()
 
         # Final platform flush
-        if self._platform:
+        if self._platform and self._is_marketplace_archetype:
             await self._platform.flush()
 
         pipeline_duration_ms = int((_time.perf_counter() - pipeline_start) * 1000)

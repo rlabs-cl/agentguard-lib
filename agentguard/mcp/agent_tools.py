@@ -63,7 +63,8 @@ def _track_mcp_tool(fn: Any) -> Any:
             raise
         finally:
             _tr = _get_tracker()
-            _tr.track(_tool_name, _archetype, _ok, int((_time.perf_counter() - _t0) * 1000))
+            if _archetype and _archetype in _marketplace_cache:
+                _tr.track(_tool_name, _archetype, _ok, int((_time.perf_counter() - _t0) * 1000))
             if _is_terminal:
                 _tr.force_flush()
 
