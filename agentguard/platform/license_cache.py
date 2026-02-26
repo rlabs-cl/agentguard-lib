@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path.home() / ".agentguard" / "cache"
 CACHE_FILE = CACHE_DIR / "licenses.json"
 
-# Default TTL: 24 hours
-DEFAULT_TTL_SECONDS = 86_400
+# Default TTL: 1 hour (allows licence revocations to propagate within ~1h)
+DEFAULT_TTL_SECONDS = 3_600
 
 
 @dataclass

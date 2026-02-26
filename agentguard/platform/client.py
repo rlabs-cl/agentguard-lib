@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _LegacyFallback(Exception):
+    """Sentinel raised internally to trigger the legacy download path."""
+
+
 @dataclass
 class UsageEventPayload:
     """A single usage event to send to the platform API."""
@@ -294,12 +298,43 @@ class PlatformClient:
     async def download_archetype(self, slug: str) -> dict[str, Any]:
         """Download the YAML content of a marketplace archetype.
 
-        Requires a valid API key.  For paid archetypes the user must own
-        a purchase.
+        Uses the secure two-step flow when the platform supports it:
+
+        1. ``POST /engine/archetypes/{slug}/download-token``
+           — verifies licence and returns a short-lived (5-min) single-use JWT.
+        2. ``GET /engine/archetypes/{slug}/content?token=<token>``
+           — consumes the token and returns the watermarked YAML.
+
+        Falls back to the legacy single-step endpoint if the platform does not
+        yet support the token flow (e.g. older deployment).
 
         Returns a dict with ``yaml_content``, ``content_hash``, ``trust_level``,
         ``slug``, ``name``, ``version``.
         """
+        client = await self._get_http()
+        base = self._config.platform_url.rstrip("/")
+
+        # ── Step 1: obtain a short-lived download token ───────────────────
+        token_url = f"{base}/api/engine/archetypes/{slug}/download-token"
+        try:
+            token_resp = await client.post(token_url)
+            if token_resp.status_code == 404:
+                # Platform doesn't support token flow yet — use legacy endpoint
+                raise _LegacyFallback()
+            token_resp.raise_for_status()
+            token_data: dict[str, Any] = token_resp.json()
+            download_token: str = token_data["download_token"]
+        except _LegacyFallback:
+            return await self._legacy_download(slug)
+
+        # ── Step 2: consume the token and receive watermarked YAML ───────
+        content_url = f"{base}/api/engine/archetypes/{slug}/content"
+        content_resp = await client.get(content_url, params={"token": download_token})
+        content_resp.raise_for_status()
+        return content_resp.json()  # type: ignore[no-any-return]
+
+    async def _legacy_download(self, slug: str) -> dict[str, Any]:
+        """Legacy single-step download (backward compat with older platforms)."""
         client = await self._get_http()
         url = f"{self._config.platform_url.rstrip('/')}/api/engine/archetypes/{slug}/download"
         resp = await client.get(url)
