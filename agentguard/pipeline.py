@@ -201,7 +201,7 @@ class Pipeline:
             summary = result.trace.summary() if result.trace else None
             await self._platform.track(
                 self._platform.build_generation_event(
-                    archetype=self._archetype.name,
+                    archetype=self._archetype.id,
                     model=f"{self._llm.provider_name}/{getattr(self._llm, 'model', 'unknown')}",
                     input_tokens=summary.total_tokens.prompt_tokens if summary else 0,
                     output_tokens=summary.total_tokens.completion_tokens if summary else 0,
@@ -239,7 +239,7 @@ class Pipeline:
             if self._platform:
                 await self._platform.track(
                     self._platform.build_validation_event(
-                        archetype=self._archetype.name,
+                        archetype=self._archetype.id,
                         duration_ms=val_duration_ms,
                         passed=report.passed,
                         fixes=len(report.auto_fixed) if report.auto_fixed else 0,
@@ -272,7 +272,7 @@ class Pipeline:
                 if self._platform:
                     await self._platform.track(
                         self._platform.build_challenge_event(
-                            archetype=self._archetype.name,
+                            archetype=self._archetype.id,
                             model=f"{self._challenge_llm.provider_name}/{getattr(self._challenge_llm, 'model', 'unknown')}",
                             input_tokens=0,  # Challenge doesn't expose token counts directly
                             output_tokens=0,

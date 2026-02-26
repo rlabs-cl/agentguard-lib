@@ -30,11 +30,44 @@ v1.2 Changes:
 
 from __future__ import annotations
 
+import functools as _functools
 import json
 import logging
+import time as _time
 from typing import Any
 
+from agentguard.mcp.usage_tracker import get_tracker as _get_tracker
+
 logger = logging.getLogger(__name__)
+
+
+def _track_mcp_tool(fn: Any) -> Any:
+    """Decorator: records one ``mcp_tool`` analytics event per tool call.
+
+    Extracts the ``archetype`` / ``target_archetype`` kwarg as the slug.
+    ``benchmark_evaluate`` is a terminal event — its buffer is force-flushed
+    immediately after the event is recorded.
+    """
+    _tool_name = fn.__name__.replace("agentguard_", "")
+    _is_terminal = _tool_name == "benchmark_evaluate"
+
+    @_functools.wraps(fn)
+    async def _wrapper(*args: Any, **kwargs: Any) -> Any:
+        _archetype: str | None = kwargs.get("archetype") or kwargs.get("target_archetype")
+        _t0 = _time.perf_counter()
+        _ok = True
+        try:
+            return await fn(*args, **kwargs)
+        except Exception:
+            _ok = False
+            raise
+        finally:
+            _tr = _get_tracker()
+            _tr.track(_tool_name, _archetype, _ok, int((_time.perf_counter() - _t0) * 1000))
+            if _is_terminal:
+                _tr.force_flush()
+
+    return _wrapper
 
 
 # ── helpers ────────────────────────────────────────────────────────
@@ -191,6 +224,7 @@ def _maturity_infrastructure(arch: Any) -> list[dict[str, str]]:
 
 # ── 1. skeleton (enhanced) ─────────────────────────────────────────
 
+@_track_mcp_tool
 async def agentguard_skeleton(
     spec: str,
     archetype: str = "api_backend",
@@ -256,6 +290,7 @@ async def agentguard_skeleton(
 
 # ── 2. contracts_and_wiring (merged L2+L3) ─────────────────────────
 
+@_track_mcp_tool
 async def agentguard_contracts_and_wiring(
     spec: str,
     skeleton_json: str,
@@ -353,6 +388,7 @@ async def agentguard_contracts_and_wiring(
 
 # ── 3. Legacy contracts (backward-compatible) ──────────────────────
 
+@_track_mcp_tool
 async def agentguard_contracts(
     spec: str,
     skeleton_json: str,
@@ -406,6 +442,7 @@ async def agentguard_contracts(
 
 # ── 4. Legacy wiring (backward-compatible) ─────────────────────────
 
+@_track_mcp_tool
 async def agentguard_wiring(
     contracts_json: str,
     archetype: str = "api_backend",
@@ -458,6 +495,7 @@ async def agentguard_wiring(
 
 # ── 5. logic (unchanged) ───────────────────────────────────────────
 
+@_track_mcp_tool
 async def agentguard_logic(
     file_path: str,
     file_code: str,
@@ -499,6 +537,7 @@ async def agentguard_logic(
 
 # ── 6. get_challenge_criteria (enhanced — criteria cached) ──────────
 
+@_track_mcp_tool
 async def agentguard_get_challenge_criteria(
     archetype: str = "api_backend",
     extra_criteria: list[str] | None = None,
@@ -563,6 +602,7 @@ async def agentguard_get_challenge_criteria(
 
 # ── 7. digest (NEW — compact project summary for review) ───────────
 
+@_track_mcp_tool
 async def agentguard_digest(
     files_json: str,
     archetype: str = "api_backend",
@@ -683,6 +723,7 @@ async def agentguard_digest(
 
 # ── 8. debug (agent-native) ────────────────────────────────────────
 
+@_track_mcp_tool
 async def agentguard_debug(
     symptom: str,
     archetype: str = "debug_backend",
@@ -792,6 +833,7 @@ async def agentguard_debug(
 
 # ── 9. migrate (agent-native) ──────────────────────────────────────
 
+@_track_mcp_tool
 async def agentguard_migrate(
     source_files: dict[str, str],
     target_archetype: str = "api_backend",
@@ -925,6 +967,7 @@ async def agentguard_migrate(
 
 # ── 10. benchmark (agent-native, two-step) ────────────────────────
 
+@_track_mcp_tool
 async def agentguard_benchmark(
     archetype: str = "api_backend",
     category: str | None = None,
@@ -1007,6 +1050,7 @@ async def agentguard_benchmark(
     )
 
 
+@_track_mcp_tool
 async def agentguard_benchmark_evaluate(
     archetype: str = "api_backend",
     results_json: str = "[]",
