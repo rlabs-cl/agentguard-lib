@@ -3,6 +3,12 @@
 Sends one ``mcp_tool`` analytics event per tool call to the AgentGuard platform.
 Transport is fire-and-forget in a daemon thread, so it never blocks tool responses.
 
+**Store-and-forward**: events that cannot be delivered (no network, platform
+unreachable) are persisted to ``~/.agentguard/pending_events.jsonl`` and
+retried on the next flush.  The combined in-memory + on-disk queue is capped
+at ``_MAX_STORED_EVENTS`` (1 000) total; oldest events are dropped first when
+the cap is reached so new tool calls are never blocked.
+
 Flush triggers (whichever fires first):
 
 - **Inactivity**: no new event for ≥ 30 s   → flush
@@ -19,15 +25,17 @@ import logging
 import os
 import threading
 import time
-import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _INACTIVITY_SECONDS: float = 30.0
-_PERIODIC_SECONDS: float = 300.0  # 5 minutes
+_PERIODIC_SECONDS: float = 300.0   # 5 minutes
+_MAX_STORED_EVENTS: int = 1_000    # cap across in-memory buffer + disk store
+_STORE_PATH = Path.home() / ".agentguard" / "pending_events.jsonl"
 
 
 @dataclass
@@ -37,6 +45,29 @@ class _ToolEvent:
     success: bool
     duration_ms: int
     timestamp: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> "_ToolEvent":
+        return _ToolEvent(
+            tool=d["tool"],
+            archetype_slug=d.get("archetype_slug"),
+            success=bool(d.get("success", True)),
+            duration_ms=int(d.get("duration_ms", 0)),
+            timestamp=float(d.get("timestamp", time.time())),
+        )
+
+
+def _event_to_payload(e: _ToolEvent) -> dict[str, Any]:
+    return {
+        "event_type": "mcp_tool",
+        "archetype_slug": e.archetype_slug,
+        "duration_ms": e.duration_ms,
+        "success": e.success,
+        "metadata_json": {"tool": e.tool, "timestamp": e.timestamp},
+    }
 
 
 class MCPUsageTracker:
@@ -80,7 +111,11 @@ class MCPUsageTracker:
         success: bool,
         duration_ms: int,
     ) -> None:
-        """Buffer one event and reset the inactivity flush timer."""
+        """Buffer one event and reset the inactivity flush timer.
+
+        Silently drops the oldest event when the combined in-memory + on-disk
+        queue would exceed ``_MAX_STORED_EVENTS``.
+        """
         if not self.is_configured:
             return
         event = _ToolEvent(
@@ -90,6 +125,14 @@ class MCPUsageTracker:
             duration_ms=duration_ms,
         )
         with self._lock:
+            disk_count = self._disk_event_count()
+            total = len(self._buffer) + disk_count
+            if total >= _MAX_STORED_EVENTS:
+                # Drop oldest: prefer trimming from disk first (oldest by design)
+                if disk_count > 0:
+                    self._drop_oldest_disk_event()
+                elif self._buffer:
+                    self._buffer.pop(0)
             self._buffer.append(event)
         self._reset_inactivity_timer()
 
@@ -122,25 +165,66 @@ class MCPUsageTracker:
         t.start()
         self._periodic_timer = t
 
+    # ── Disk store helpers ──────────────────────────────────────────────────
+
+    def _disk_event_count(self) -> int:
+        """Return number of events persisted on disk (no lock assumed by caller)."""
+        try:
+            if not _STORE_PATH.exists():
+                return 0
+            return sum(1 for ln in _STORE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip())
+        except Exception:
+            return 0
+
+    def _drop_oldest_disk_event(self) -> None:
+        """Remove the first (oldest) line from the disk store."""
+        try:
+            lines = [ln for ln in _STORE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
+            if lines:
+                _STORE_PATH.write_text("\n".join(lines[1:]) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+
+    def _load_pending(self) -> list[_ToolEvent]:
+        """Read all persisted events from disk and clear the file."""
+        try:
+            if not _STORE_PATH.exists():
+                return []
+            lines = [ln.strip() for ln in _STORE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
+            events = []
+            for ln in lines:
+                try:
+                    events.append(_ToolEvent.from_dict(json.loads(ln)))
+                except Exception:
+                    pass  # corrupted line — skip
+            _STORE_PATH.write_text("", encoding="utf-8")
+            return events
+        except Exception:
+            return []
+
+    def _persist(self, events: list[_ToolEvent]) -> None:
+        """Append events to the disk store (called on send failure)."""
+        try:
+            _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _STORE_PATH.open("a", encoding="utf-8") as fh:
+                for e in events:
+                    fh.write(json.dumps(e.to_dict()) + "\n")
+        except Exception:
+            logger.debug("MCPUsageTracker: could not persist %d events to disk", len(events))
+
     # ── HTTP flush ──────────────────────────────────────────────────────────
 
     def _flush_sync(self) -> None:
         with self._lock:
-            if not self._buffer:
-                return
-            events = self._buffer[:]
+            # Collect in-memory buffer + any previously persisted events
+            pending_disk = self._load_pending()
+            all_events = pending_disk + self._buffer[:]
             self._buffer.clear()
 
-        payload: list[dict[str, Any]] = [
-            {
-                "event_type": "mcp_tool",
-                "archetype_slug": e.archetype_slug,
-                "duration_ms": e.duration_ms,
-                "success": e.success,
-                "metadata_json": {"tool": e.tool},
-            }
-            for e in events
-        ]
+        if not all_events:
+            return
+
+        payload = [_event_to_payload(e) for e in all_events]
 
         try:
             body = json.dumps(payload).encode()
@@ -156,15 +240,18 @@ class MCPUsageTracker:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 logger.debug(
                     "MCPUsageTracker: reported %d events (HTTP %d)",
-                    len(events),
+                    len(all_events),
                     resp.status,
                 )
+            # Success — disk store already cleared in _load_pending()
         except Exception:
             logger.debug(
-                "MCPUsageTracker: failed to report %d events",
-                len(events),
-                exc_info=True,
+                "MCPUsageTracker: offline — persisted %d events to %s",
+                len(all_events),
+                _STORE_PATH,
             )
+            # Network unavailable or platform unreachable — save for next flush
+            self._persist(all_events)
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
