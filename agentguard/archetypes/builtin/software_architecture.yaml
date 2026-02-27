@@ -1,0 +1,133 @@
+id: "software_architecture"
+name: "Software Architecture Design"
+description: "Architectural design deliverables for software systems — ADRs, C4 diagrams, component boundaries, API contracts, and infrastructure topology"
+version: "1.0.0"
+maturity: "production"
+
+tech_stack:
+  defaults:
+    language: "python"
+    framework: "none"
+    database: "none"
+    testing: "pytest"
+    linter: "ruff"
+    type_checker: "mypy"
+  overridable: true
+  notes: >
+    This archetype produces design artifacts, not runnable services.
+    Tech-stack fields describe the *target* system being architected, not the
+    tooling used to generate the documents.
+
+pipeline:
+  levels: ["skeleton", "contracts", "wiring", "logic"]
+  enable_self_challenge: true
+  enable_structural_validation: true
+  max_self_challenge_retries: 3
+
+structure:
+  expected_dirs:
+    - "docs/adr/"
+    - "docs/diagrams/"
+    - "docs/contracts/"
+    - "src/{project_name}/"
+    - "src/{project_name}/models/"
+    - "src/{project_name}/services/"
+    - "tests/"
+  expected_files:
+    - "docs/adr/README.md"
+    - "docs/diagrams/README.md"
+    - "docs/contracts/README.md"
+    - "src/{project_name}/__init__.py"
+    - "src/{project_name}/models/domain.py"
+    - "src/{project_name}/services/interfaces.py"
+    - "pyproject.toml"
+    - "README.md"
+
+context_recipes:
+  skeleton:
+    include: ["spec", "archetype_structure"]
+    max_tokens: 4000
+  contracts:
+    include: ["spec", "skeleton", "reference_patterns"]
+    max_tokens: 8000
+  wiring:
+    include: ["contracts", "skeleton"]
+    max_tokens: 10000
+  logic:
+    include: ["function_stub", "function_tests", "function_deps", "reference_patterns"]
+    max_tokens: 7000
+
+validation:
+  checks: ["syntax", "lint", "types", "imports", "structure"]
+  lint_rules: "ruff:default"
+  type_strictness: "strict"
+
+self_challenge:
+  criteria:
+    # ── Completeness ──
+    - "Every bounded context identified in the spec has a corresponding module or service boundary"
+    - "All external integrations are documented in docs/contracts/ with request/response shapes"
+    - "At least one ADR exists for each non-trivial architectural decision (storage, auth, messaging)"
+    - "C4 model covers at minimum Context and Container levels"
+    - "Data flow across service/module boundaries is explicit — no undocumented side-channel coupling"
+
+    # ── Design quality ──
+    - "No circular dependencies between modules — dependency graph is a DAG"
+    - "Each service/module has a single clear responsibility (SRP)"
+    - "Public interfaces defined as abstract base classes or Protocols — no concrete coupling"
+    - "All shared data structures live in a dedicated models layer, not scattered across services"
+    - "Interfaces do not expose implementation details (no leaky abstractions)"
+    - "No god class or god service with more than 5 distinct responsibilities"
+
+    # ── Operational readiness ──
+    - "Every external dependency has an identified failure mode and fallback strategy"
+    - "All stateful components (databases, caches, queues) have an identified scaling strategy"
+    - "Authentication and authorisation boundaries are explicitly marked on diagrams"
+    - "Data classification (PII, sensitive, public) is captured in the domain model"
+    - "Observability hooks (metrics, traces, logs) are assigned to each service boundary"
+    - "Deployment topology aligns with specified non-functional requirements (latency, availability)"
+
+    # ── Code artifacts ──
+    - "No hardcoded configuration — all environment-specific values via env vars or config maps"
+    - "All referenced imports actually exist"
+    - "No invented API endpoints — every interface in contracts/ has a matching implementation stub"
+    - "Service interfaces are fully typed (no 'Any' type annotations)"
+    - "Domain models use Pydantic BaseModel or dataclasses — no plain dicts as message contracts"
+
+    # ── Documentation ──
+    - "Each ADR follows the MADR or similar template (Context / Decision / Consequences)"
+    - "README describes the system purpose, component map, and onboarding steps"
+    - "Every public interface has a docstring explaining purpose, inputs, outputs, and invariants"
+    - "Diagrams include a legend if non-standard notation is used"
+
+  grounding_check: true
+  assumptions_must_declare: true
+
+reference_patterns:
+  - "hexagonal_architecture_pattern"
+  - "c4_model_pattern"
+  - "adr_madr_pattern"
+  - "pydantic_schema_pattern"
+  - "protocol_interface_pattern"
+  - "domain_event_pattern"
+  - "repository_pattern"
+  - "cqrs_pattern"
+
+target_output: "Architectural design package: ADRs, C4 diagrams (Mermaid), typed API contracts, domain model classes, service interface stubs, and a README with system overview and onboarding guide"
+
+scoring_weights:
+  # Enterprise
+  type_safety: 1.0          # All interfaces must be fully typed
+  modularity: 1.0           # Core concern — clean boundary definition
+  maintainability: 1.0      # ADRs and diagrams must keep docs in sync with code
+  accessibility: 0.0        # N/A — no UI layer
+  performance: 0.7          # Architecture must reflect NFR decisions (latency, throughput)
+  observability: 1.0        # Observability strategy is an architectural artefact
+  testability: 1.0          # Interfaces must be mockable; test strategy must be documented
+  # Operational
+  debuggability: 0.8
+  feature_extensibility: 1.0   # Architecture must accommodate the stated growth axes
+  cloud_scalability: 1.0       # Scaling strategy is part of the deliverable
+  api_migration_cost: 1.0      # Versioning and evolution strategy required
+  test_surface: 1.0
+  team_onboarding: 1.0         # Great architecture docs exist to onboard teams
