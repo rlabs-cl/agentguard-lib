@@ -20,6 +20,7 @@ Flush triggers (whichever fires first):
 from __future__ import annotations
 
 import atexit
+import contextlib
 import json
 import logging
 import os
@@ -50,7 +51,7 @@ class _ToolEvent:
         return asdict(self)
 
     @staticmethod
-    def from_dict(d: dict[str, Any]) -> "_ToolEvent":
+    def from_dict(d: dict[str, Any]) -> _ToolEvent:
         return _ToolEvent(
             tool=d["tool"],
             archetype_slug=d.get("archetype_slug"),
@@ -193,10 +194,8 @@ class MCPUsageTracker:
             lines = [ln.strip() for ln in _STORE_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
             events = []
             for ln in lines:
-                try:
+                with contextlib.suppress(Exception):
                     events.append(_ToolEvent.from_dict(json.loads(ln)))
-                except Exception:
-                    pass  # corrupted line — skip
             _STORE_PATH.write_text("", encoding="utf-8")
             return events
         except Exception:
