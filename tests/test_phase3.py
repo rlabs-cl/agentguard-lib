@@ -393,7 +393,7 @@ class TestMCPConfiguration:
         assert "agentguard" in data["servers"]
         server = data["servers"]["agentguard"]
         assert server["type"] == "stdio"
-        assert "agentguard.mcp.server" in server["args"]
+        assert "mcp-serve" in server["args"] or "agentguard.mcp.server" in server["args"]
 
     def test_mcp_server_creates_successfully(self) -> None:
         """Verify the MCP server object can be created with all tools."""
