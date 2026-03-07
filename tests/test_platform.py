@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -471,3 +472,50 @@ class TestPipelinePlatformIntegration:
                 report_usage=False,
             )
             assert pipe.platform is None
+
+
+class TestPlatformConfigClaim:
+    """Test the client-side has_live_claim property."""
+
+    def test_has_live_claim_true(self) -> None:
+        from datetime import UTC, timedelta
+        cfg = PlatformConfig(
+            api_key="ag_test",
+            claim_token="some-token",
+            claim_expires_at=(datetime.now(UTC) + timedelta(hours=12)).isoformat(),
+        )
+        assert cfg.has_live_claim is True
+
+    def test_has_live_claim_expired(self) -> None:
+        from datetime import UTC, timedelta
+        cfg = PlatformConfig(
+            api_key="ag_test",
+            claim_token="some-token",
+            claim_expires_at=(datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        )
+        assert cfg.has_live_claim is False
+
+    def test_has_live_claim_no_token(self) -> None:
+        cfg = PlatformConfig(api_key="ag_test")
+        assert cfg.has_live_claim is False
+
+    def test_has_live_claim_no_expires(self) -> None:
+        cfg = PlatformConfig(api_key="ag_test", claim_token="tok")
+        assert cfg.has_live_claim is False
+
+    def test_config_roundtrip_preserves_claim(self) -> None:
+        from datetime import UTC, timedelta
+        exp = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
+        cfg = PlatformConfig(
+            api_key="ag_test",
+            claim_token="my-claim-token",
+            claim_expires_at=exp,
+        )
+        d = cfg.to_dict()
+        assert d["claim_token"] == "my-claim-token"
+        assert d["claim_expires_at"] == exp
+
+        restored = PlatformConfig.from_dict(d)
+        assert restored.claim_token == "my-claim-token"
+        assert restored.claim_expires_at == exp
+        assert restored.has_live_claim is True

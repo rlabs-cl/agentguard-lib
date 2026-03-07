@@ -530,7 +530,7 @@ def config_set_key(api_key: str, force: bool) -> None:
             # Claim failed — may be 409 (in use) or platform unreachable
             status_code = getattr(getattr(exc, "response", None), "status_code", None)
             if status_code == 409:
-                detail = exc.response.json().get("detail", str(exc))  # type: ignore[union-attr]
+                detail = exc.response.json().get("detail", str(exc))  # type: ignore[union-attr, attr-defined]
                 click.echo(f"⚠  {detail}", err=True)
                 click.echo(
                     "\nTo transfer the session to this machine:\n"
