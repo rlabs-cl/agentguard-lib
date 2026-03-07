@@ -393,6 +393,54 @@ type safety, modularity, maintainability, accessibility, performance, observabil
 **Operational readiness (6 dimensions):**
 debuggability, feature extensibility, cloud scalability, API migration cost, test surface, team onboarding
 
+### Archetype Benchmark Configuration
+
+Every archetype can declare how it should be evaluated during benchmarking via a `benchmark:` block in the YAML. This makes the scoring portable — the same CLI command or runner call works across any archetype, and each archetype gets the evaluation logic that matches what it produces.
+
+```yaml
+# In your archetype YAML
+benchmark:
+  profile: "code"           # named evaluator (see profiles below)
+  improvement_threshold: 0.05  # minimum delta to pass (default: 0.05)
+```
+
+**Built-in profiles:**
+
+| Profile | What It Evaluates | Use When |
+|---------|-------------------|----------|
+| `code` | AST-based: type safety, modularity, observability, testability… | Python / TS code archetypes |
+| `documentation` | Heading structure, word count, code examples | Doc / README generators |
+| `archetype` | YAML validity + required field presence | Archetype-generating agents |
+| `generic` | Lightweight: line count, structure presence, non-empty output | Anything that doesn't fit above |
+
+**Inline criteria** — for archetypes producing non-code output, define an LLM-judged rubric directly in the YAML:
+
+```yaml
+benchmark:
+  profile: "generic"
+  improvement_threshold: 0.03
+  criteria:
+    - id: "clear_structure"
+      description: "Output is clearly structured with sections or headings"
+      weight: 1.5
+    - id: "actionable"
+      description: "Each recommendation is concrete and actionable"
+      weight: 1.0
+```
+
+**Custom specs** — supply benchmark prompts tailored to your archetype instead of the generic catalog defaults:
+
+```yaml
+benchmark:
+  profile: "code"
+  specs:
+    low: "A single CLI command that renames files in a directory"
+    medium: "A REST API with CRUD endpoints for a task list"
+    high: "A multi-tenant API with auth, rate-limiting, and background jobs"
+```
+
+When `profile` is omitted, the runner falls back to inline `criteria` if present, then to `generic`.
+
 ### CLI Usage
 
 ```bash
