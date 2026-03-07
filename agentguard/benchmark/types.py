@@ -168,6 +168,21 @@ class ComplexityRun:
 
 
 @dataclass
+class BenchmarkCriterion:
+    """Author-defined evaluation criterion with an explicit LLM-judge rubric.
+
+    Used when an archetype defines its own inline benchmark criteria in the
+    ``benchmark.criteria`` YAML block.  Evaluated by ``CriteriaBasedEvaluator``
+    instead of the default AST-heuristic evaluator.
+    """
+
+    name: str
+    description: str
+    rubric: str        # What does 0.0, 0.5, and 1.0 look like?
+    weight: float = 1.0  # 0.0 = exclude from aggregate
+
+
+@dataclass
 class BenchmarkSpec:
     """A single benchmark specification at a given complexity."""
 
@@ -193,6 +208,7 @@ class BenchmarkConfig:
     operational_threshold: float = 0.6        # Min operational score to pass
     improvement_threshold: float = 0.05       # Min avg improvement to pass
     timeout_per_run_s: int = 300              # 5 min per run
+    require_all_complexities: bool = True     # Set False when archetype provides inline specs
 
     def validate(self) -> list[str]:
         """Return list of validation errors, empty if config is valid."""
@@ -200,13 +216,14 @@ class BenchmarkConfig:
         if not self.specs:
             errors.append("At least one benchmark spec is required")
 
-        # Check all 5 complexity levels are covered
-        covered = {s.complexity for s in self.specs}
-        missing = set(ALL_COMPLEXITIES) - covered
-        if missing:
-            errors.append(
-                f"Missing complexity levels: {', '.join(sorted(m.value for m in missing))}"
-            )
+        if self.require_all_complexities:
+            # Check all 5 complexity levels are covered
+            covered = {s.complexity for s in self.specs}
+            missing = set(ALL_COMPLEXITIES) - covered
+            if missing:
+                errors.append(
+                    f"Missing complexity levels: {', '.join(sorted(m.value for m in missing))}"
+                )
         return errors
 
 

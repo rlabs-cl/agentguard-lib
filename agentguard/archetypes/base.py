@@ -103,6 +103,39 @@ class MigrationConfig:
 
 
 @dataclass
+class BenchmarkCriterionConfig:
+    """Benchmark evaluation criterion defined inline in the archetype YAML.
+
+    Mirrors :class:`~agentguard.benchmark.types.BenchmarkCriterion` but lives
+    in the archetype layer so ``base.py`` has no import dependency on the
+    benchmark module.
+    """
+
+    name: str
+    description: str
+    rubric: str
+    weight: float = 1.0
+
+
+@dataclass
+class ArchetypeBenchmarkConfig:
+    """Benchmark evaluation configuration embedded in the archetype.
+
+    Set via the ``benchmark:`` block in the archetype YAML.  The runner checks
+    these fields to decide which evaluator to use:
+
+    1. ``profile`` set → named profile from the registry.
+    2. ``criteria`` non-empty → LLM-judge per inline criterion.
+    3. Neither → ``"generic"`` profile fallback.
+    """
+
+    profile: str | None = None
+    criteria: list[BenchmarkCriterionConfig] = field(default_factory=list)
+    specs: dict[str, str] = field(default_factory=dict)       # complexity → spec text
+    improvement_threshold: float | None = None
+
+
+@dataclass
 class Archetype:
     """A project archetype — blueprint that configures the entire pipeline.
 
@@ -133,6 +166,7 @@ class Archetype:
     infrastructure_files: list[str] = field(default_factory=list)
     debug_config: DebugConfig = field(default_factory=DebugConfig)
     migration_config: MigrationConfig = field(default_factory=MigrationConfig)
+    benchmark_config: ArchetypeBenchmarkConfig = field(default_factory=ArchetypeBenchmarkConfig)
 
     @classmethod
     def load(cls, archetype_id: str, overrides: dict[str, Any] | None = None) -> Archetype:
@@ -266,6 +300,36 @@ def _from_dict(data: dict[str, Any]) -> Archetype:
         infrastructure_files=data.get("infrastructure_files", []),
         debug_config=debug_config,
         migration_config=migration_config,
+        benchmark_config=_parse_benchmark_config(data.get("benchmark", {})),
+    )
+
+
+def _parse_benchmark_config(data: dict[str, Any]) -> ArchetypeBenchmarkConfig:
+    """Parse the ``benchmark:`` YAML block into an :class:`ArchetypeBenchmarkConfig`."""
+    if not data:
+        return ArchetypeBenchmarkConfig()
+
+    raw_criteria = data.get("criteria", [])
+    criteria = [
+        BenchmarkCriterionConfig(
+            name=c["name"],
+            description=c.get("description", ""),
+            rubric=c.get("rubric", ""),
+            weight=float(c.get("weight", 1.0)),
+        )
+        for c in raw_criteria
+        if isinstance(c, dict) and "name" in c
+    ]
+
+    return ArchetypeBenchmarkConfig(
+        profile=data.get("profile"),
+        criteria=criteria,
+        specs=dict(data.get("specs", {})),
+        improvement_threshold=(
+            float(data["improvement_threshold"])
+            if "improvement_threshold" in data and data["improvement_threshold"] is not None
+            else None
+        ),
     )
 
 

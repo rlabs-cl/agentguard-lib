@@ -22,12 +22,14 @@ import logging
 import time as _time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from agentguard.benchmark.evaluator import evaluate_enterprise, evaluate_operational
 from agentguard.benchmark.types import (
     BenchmarkConfig,
+    BenchmarkCriterion,
     BenchmarkReport,
+    BenchmarkSpec,
+    Complexity,
     ComplexityRun,
     ReadinessScore,
     RunResult,
@@ -42,6 +44,14 @@ _log = logging.getLogger(__name__)
 # Type alias for the progress callback.
 _ProgressCB = Callable[..., Awaitable[None]]
 
+# Type alias for the resolved evaluator:
+#   (spec, files, enterprise_threshold, operational_threshold, llm)
+#   -> (enterprise_score, operational_score)
+_EvaluatorFn = Callable[
+    ...,
+    Awaitable[tuple[ReadinessScore, ReadinessScore]],
+]
+
 # Minimal system prompt for the control (raw LLM) run.
 _CONTROL_SYSTEM = (
     "You are an expert software developer. Generate production-quality code "
@@ -50,6 +60,54 @@ _CONTROL_SYSTEM = (
     "```<filepath>\n<content>\n```\n\n"
     "for each file. Include all necessary imports and boilerplate."
 )
+
+
+# ── Evaluator wrappers ────────────────────────────────────────────────────────
+# Both adapters share the same async signature used by _run_control/_run_treatment:
+#   async (spec, files, ent_thresh, ops_thresh, llm) -> (enterprise, operational)
+
+
+def _wrap_profile(profile: Any) -> _EvaluatorFn:
+    """Wrap a synchronous profile evaluator as an async callable."""
+    async def _eval(
+        spec: str,
+        files: dict[str, str],
+        enterprise_threshold: float,
+        operational_threshold: float,
+        llm: object,
+    ) -> tuple[ReadinessScore, ReadinessScore]:
+        return profile.evaluate(spec, files, enterprise_threshold, operational_threshold)
+    return _eval  # type: ignore[return-value]
+
+
+def _wrap_criteria(evaluator: Any) -> _EvaluatorFn:
+    """Wrap a CriteriaBasedEvaluator as the standard evaluator signature."""
+    async def _eval(
+        spec: str,
+        files: dict[str, str],
+        enterprise_threshold: float,
+        operational_threshold: float,
+        llm: object,
+    ) -> tuple[ReadinessScore, ReadinessScore]:
+        return await evaluator.evaluate(spec, files, llm)  # type: ignore[arg-type]
+    return _eval  # type: ignore[return-value]
+
+
+def _extract_inline_specs(archetype: Archetype) -> list[BenchmarkSpec]:
+    """Extract inline benchmark specs from the archetype's benchmark config."""
+    bench = getattr(archetype, "benchmark_config", None)
+    if bench is None or not bench.specs:
+        return []
+
+    category = getattr(archetype, "id", "general")
+    result: list[BenchmarkSpec] = []
+    for complexity_str, spec_text in bench.specs.items():
+        try:
+            complexity = Complexity(complexity_str)
+            result.append(BenchmarkSpec(complexity=complexity, spec=spec_text, category=category))
+        except ValueError:
+            _log.warning("Unknown complexity '%s' in inline specs — skipped", complexity_str)
+    return result
 
 
 class BenchmarkRunner:
@@ -101,6 +159,20 @@ class BenchmarkRunner:
         else:
             self._archetype = archetype
 
+        # Populate specs from archetype inline benchmark config when caller
+        # hasn't provided any.  This lets archetype authors ship their own
+        # benchmark specs inside the YAML without requiring 5 complexity levels.
+        if not config.specs:
+            inline_specs = _extract_inline_specs(self._archetype)
+            if inline_specs:
+                config.specs = inline_specs
+                config.require_all_complexities = False
+                _log.info(
+                    "Using %d inline benchmark spec(s) from archetype '%s'",
+                    len(inline_specs),
+                    self._archetype.id,
+                )
+
         # Validate config
         errors = config.validate()
         if errors:
@@ -128,6 +200,9 @@ class BenchmarkRunner:
 
         self._secret = signing_secret
         self._total_cost: float = 0.0
+
+        # Resolve which evaluator to use for this archetype's output type
+        self._evaluator = self._resolve_evaluator()
 
     async def run(self, *, progress_callback: _ProgressCB | None = None) -> BenchmarkReport:
         """Execute the full benchmark across all configured specs.
@@ -229,9 +304,13 @@ class BenchmarkRunner:
                 # Treat the whole response as a single file
                 files = {"main.py": response.content}
 
-            # Evaluate
-            enterprise = evaluate_enterprise(files, self._config.enterprise_threshold)
-            operational = evaluate_operational(files, self._config.operational_threshold)
+            # Evaluate using the resolved evaluator for this archetype type
+            enterprise, operational = await self._evaluator(
+                spec, files,
+                self._config.enterprise_threshold,
+                self._config.operational_threshold,
+                self._llm,
+            )
 
             total_lines = sum(c.count("\n") + 1 for c in files.values())
             cost = float(response.cost.total_cost)
@@ -270,9 +349,13 @@ class BenchmarkRunner:
 
             files = result.files
 
-            # Evaluate
-            enterprise = evaluate_enterprise(files, self._config.enterprise_threshold)
-            operational = evaluate_operational(files, self._config.operational_threshold)
+            # Evaluate using the resolved evaluator for this archetype type
+            enterprise, operational = await self._evaluator(
+                spec, files,
+                self._config.enterprise_threshold,
+                self._config.operational_threshold,
+                self._llm,
+            )
 
             total_lines = sum(c.count("\n") + 1 for c in files.values())
             cost = float(result.total_cost.total_cost)
@@ -292,6 +375,67 @@ class BenchmarkRunner:
             return _error_result(str(exc), duration_ms)
         finally:
             await pipe.close()
+
+    # ══════════════════════════════════════════════════════════
+    #  Evaluator resolution
+    # ══════════════════════════════════════════════════════════
+
+    def _resolve_evaluator(self) -> _EvaluatorFn:
+        """Choose the evaluation function for this archetype's output type.
+
+        Resolution chain (first match wins):
+
+        1. ``archetype.benchmark_config.profile`` → named profile in registry.
+        2. ``archetype.benchmark_config.criteria`` → ``CriteriaBasedEvaluator``
+           (LLM-judge, one pass per criterion).
+        3. Fallback → ``"generic"`` profile (content, structure, spec coverage).
+        """
+        from agentguard.benchmark.profiles import get_profile
+
+        bench = getattr(self._archetype, "benchmark_config", None)
+
+        # ── 1. Named profile ──────────────────────────────────
+        if bench and bench.profile:
+            profile = get_profile(bench.profile)
+            if profile is not None:
+                _log.info("Benchmark evaluator: named profile '%s'", bench.profile)
+                return _wrap_profile(profile)
+            _log.warning(
+                "Profile '%s' not found in registry — falling back to criteria/generic",
+                bench.profile,
+            )
+
+        # ── 2. Inline criteria → LLM judge ───────────────────
+        if bench and bench.criteria:
+            from agentguard.benchmark.criteria_evaluator import CriteriaBasedEvaluator
+
+            criteria = [
+                BenchmarkCriterion(
+                    name=c.name,
+                    description=c.description,
+                    rubric=c.rubric,
+                    weight=c.weight,
+                )
+                for c in bench.criteria
+            ]
+            evaluator = CriteriaBasedEvaluator(
+                criteria,
+                threshold=self._config.enterprise_threshold,
+            )
+            _log.info(
+                "Benchmark evaluator: criteria-based LLM judge (%d criteria)",
+                len(criteria),
+            )
+            return _wrap_criteria(evaluator)
+
+        # ── 3. Generic fallback ───────────────────────────────
+        _log.info("Benchmark evaluator: generic profile (fallback)")
+        generic = get_profile("generic")
+        if generic is None:
+            # Profiles module not imported yet — trigger registration
+            from agentguard.benchmark.profiles import builtin as _b  # noqa: F401
+            generic = get_profile("generic")
+        return _wrap_profile(generic)  # type: ignore[arg-type]
 
     # ══════════════════════════════════════════════════════════
     #  Report building

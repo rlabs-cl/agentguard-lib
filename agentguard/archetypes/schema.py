@@ -221,6 +221,109 @@ class SelfChallengeSchema(BaseModel):
         return [c.strip() for c in v]
 
 
+class BenchmarkCriterionSchema(BaseModel):
+    """Author-defined evaluation criterion for LLM-judge scoring.
+
+    Used in the ``benchmark.criteria`` block of an archetype YAML.
+    The archetype author writes explicit rubrics so any LLM can evaluate
+    the output fairly, without needing language-specific static analysis.
+    """
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
+    rubric: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Explicit scoring guide: what does 0.0, 0.5, and 1.0 look like?",
+    )
+    weight: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description="Relative weight in the aggregate score. 0.0 = exclude.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _slug_name(cls, v: str) -> str:
+        if not re.match(r"^[a-z][a-z0-9_]{0,98}$", v):
+            raise ValueError(
+                f"Criterion name '{v}' must be lowercase alphanumeric + underscores, "
+                f"start with a letter."
+            )
+        return v
+
+
+class BenchmarkSchema(BaseModel):
+    """Benchmark configuration embedded in an archetype YAML.
+
+    Archetype authors use this block to declare how their archetype should be
+    evaluated during benchmarking.  Three fields are provided:
+
+    - ``profile``: a named evaluator profile (e.g. ``"code"``, ``"documentation"``,
+      ``"archetype"``, ``"generic"``).  When omitted, the runner falls back to
+      inline ``criteria`` or the ``"generic"`` profile.
+    - ``criteria``: inline author-defined rubrics evaluated by an LLM judge.
+      Used when the archetype produces non-Python output.
+    - ``specs``: per-complexity benchmark prompts that replace the catalog
+      defaults.  The author knows best what a good test for their archetype
+      looks like — they don't need to cover all 5 complexity levels.
+    - ``improvement_threshold``: override the runner default (0.05) with a
+      value appropriate for this archetype type.
+    """
+
+    profile: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Named evaluator profile (e.g. 'code', 'documentation', 'generic').",
+    )
+    criteria: list[BenchmarkCriterionSchema] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Inline author-defined criteria evaluated with an LLM judge.",
+    )
+    specs: dict[str, str] = Field(
+        default_factory=dict,
+        description="Per-complexity inline benchmark specs override (complexity → spec text).",
+    )
+    improvement_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Override the default improvement threshold for this archetype.",
+    )
+
+    @field_validator("specs")
+    @classmethod
+    def _valid_specs(cls, v: dict[str, str]) -> dict[str, str]:
+        valid_levels = {"trivial", "low", "medium", "high", "enterprise"}
+        invalid = set(v.keys()) - valid_levels
+        if invalid:
+            raise ValueError(
+                f"Invalid complexity levels in benchmark.specs: {sorted(invalid)}. "
+                f"Must be from: {sorted(valid_levels)}"
+            )
+        for lvl, spec in v.items():
+            if not spec.strip():
+                raise ValueError(f"Benchmark spec for complexity '{lvl}' is empty")
+            if len(spec) > 5000:
+                raise ValueError(f"Benchmark spec for complexity '{lvl}' exceeds 5000 chars")
+        return v
+
+    @field_validator("profile")
+    @classmethod
+    def _valid_profile(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not re.match(r"^[a-z][a-z0-9_]{0,62}$", v):
+            raise ValueError(
+                f"Profile name '{v}' must be lowercase alphanumeric + underscores, "
+                f"start with a letter."
+            )
+        return v
+
+
 # ── Main Schema ───────────────────────────────────────────────────
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{1,62}[a-z0-9]$")
@@ -253,6 +356,10 @@ class ArchetypeSchema(BaseModel):
         default_factory=dict,
         description="Per-dimension relevance weights (0.0 = N/A, 1.0 = full weight). "
                     "Missing dimensions default to 1.0.",
+    )
+    benchmark: BenchmarkSchema = Field(
+        default_factory=BenchmarkSchema,
+        description="Benchmark evaluation configuration for this archetype.",
     )
 
     @field_validator("scoring_weights")
@@ -382,7 +489,7 @@ def _validate_archetype_dict(data: dict[str, Any]) -> ArchetypeSchema:
     for key in (
         "pipeline", "context_recipes", "validation",
         "self_challenge", "reference_patterns", "infrastructure_files",
-        "target_output", "scoring_weights",
+        "target_output", "scoring_weights", "benchmark",
     ):
         if key in data:
             normalized[key] = data[key]
