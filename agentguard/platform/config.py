@@ -55,8 +55,7 @@ class PlatformConfig:
 
             expires = datetime.fromisoformat(self.claim_expires_at)
             if expires.tzinfo is None:
-                from datetime import timezone
-                expires = expires.replace(tzinfo=timezone.utc)
+                expires = expires.replace(tzinfo=UTC)
             return expires > datetime.now(UTC)
         except ValueError:
             return False
