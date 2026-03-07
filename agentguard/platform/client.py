@@ -19,6 +19,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _save_config_if_possible(config: Any) -> None:
+    """Persist config to disk silently — never raises."""
+    try:
+        from agentguard.platform.config import save_config
+        save_config(config)
+    except Exception:
+        logger.debug("Could not persist config after claim update", exc_info=True)
+
+
 
 @dataclass
 class UsageEventPayload:
@@ -376,6 +385,75 @@ class PlatformClient:
         resp.raise_for_status()
         return resp.json()  # type: ignore[no-any-return]
 
+    # ── Claim session management ──────────────────────────────────
+
+    async def claim_session(
+        self,
+        label: str = "unknown session",
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Start a session claim on the current API key.
+
+        Sends ``POST /engine/claim`` and stores the returned ``claim_token``
+        in the local config file so every subsequent request includes it
+        transparently via ``X-Claim-Token``.
+
+        Args:
+            label:  Human-readable name for this session
+                    (e.g. ``socket.gethostname()``).
+            force:  If ``True``, revoke any existing claim and start fresh.
+                    The server returns 409 without this flag when another
+                    session is active.
+
+        Returns:
+            The raw JSON response: ``{claim_token, label, expires_at}``.
+        """
+        # Use a temporary client without X-Claim-Token for this call
+        client = await self._get_http()
+        url = f"{self._config.platform_url.rstrip('/')}/api/engine/claim"
+        resp = await client.post(url, json={"label": label, "force": force})
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+
+        # Persist the claim token to disk
+        self._config.claim_token = data["claim_token"]
+        self._config.claim_expires_at = data["expires_at"]
+        _save_config_if_possible(self._config)
+
+        # Rebuild the HTTP client so it picks up the new claim token header
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
+
+        return data
+
+    async def release_session(self) -> None:
+        """Release the current session claim on the API key.
+
+        Sends ``DELETE /engine/claim`` to free the key, then clears the
+        claim token from the local config file.  Idempotent if no claim exists.
+        """
+        if not self._config.claim_token:
+            return  # Nothing to release
+
+        try:
+            client = await self._get_http()
+            url = f"{self._config.platform_url.rstrip('/')}/api/engine/claim"
+            resp = await client.request("DELETE", url)
+            # 204 = released, 403 = token mismatch (already released elsewhere)
+            if resp.status_code not in (204, 403):
+                resp.raise_for_status()
+        except Exception:
+            logger.debug("release_session: server call failed (ignored)", exc_info=True)
+        finally:
+            self._config.claim_token = None
+            self._config.claim_expires_at = None
+            _save_config_if_possible(self._config)
+            if self._http is not None:
+                await self._http.aclose()
+                self._http = None
+
     # ── Timing helper ─────────────────────────────────────────
 
     @staticmethod
@@ -386,7 +464,11 @@ class PlatformClient:
     # ── Internal ──────────────────────────────────────────────
 
     async def _get_http(self) -> Any:
-        """Lazy-initialize the httpx async client."""
+        """Lazy-initialize the httpx async client.
+
+        Headers are rebuilt when the claim token changes (e.g. after
+        ``claim_session`` or ``release_session``).
+        """
         if self._http is None:
             try:
                 import httpx
@@ -396,13 +478,34 @@ class PlatformClient:
                     'Install it with: pip install "rlabs-agentguard[platform]"'
                 ) from None
 
+            headers: dict[str, str] = {
+                "Authorization": f"Bearer {self._config.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": f"agentguard-engine/{_get_version()}",
+            }
+            # Inject claim token transparently when present and locally valid
+            if self._config.claim_token and self._config.has_live_claim:
+                headers["X-Claim-Token"] = self._config.claim_token
+
+            # Renew local claim_expires_at on every successful response so the
+            # config file stays in sync with the server's rolling TTL.
+            cfg = self._config
+
+            async def _renew_claim_ttl(response: Any) -> None:
+                if (
+                    cfg.claim_token
+                    and response.status_code < 300
+                ):
+                    from datetime import UTC, datetime, timedelta
+                    cfg.claim_expires_at = (
+                        datetime.now(UTC) + timedelta(hours=24)
+                    ).isoformat()
+                    _save_config_if_possible(cfg)
+
             self._http = httpx.AsyncClient(
                 timeout=self._config.timeout_seconds,
-                headers={
-                    "Authorization": f"Bearer {self._config.api_key}",
-                    "Content-Type": "application/json",
-                    "User-Agent": f"agentguard-engine/{_get_version()}",
-                },
+                headers=headers,
+                event_hooks={"response": [_renew_claim_ttl]},
             )
         return self._http
 

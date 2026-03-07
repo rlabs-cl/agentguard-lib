@@ -473,19 +473,83 @@ def config_group() -> None:
 
 @config_group.command(name="set-key")
 @click.argument("api_key")
-def config_set_key(api_key: str) -> None:
-    """Set the platform API key.
+@click.option(
+    "--force", is_flag=True,
+    help="Force-transfer the session if the key is already claimed elsewhere.",
+)
+def config_set_key(api_key: str, force: bool) -> None:
+    """Set the platform API key and start a session claim.
 
     API_KEY is the key starting with 'ag_' from your AgentGuard dashboard.
+
+    A session claim is started automatically so the key can only be used
+    from this machine until you run this command on another machine (or the
+    session expires after 24 h of inactivity).
     """
+    import socket
+
+    from agentguard.platform.client import PlatformClient
     from agentguard.platform.config import load_config, save_config
 
     cfg = load_config()
+
+    # If switching to a different key, release the old claim first
+    if cfg.api_key and cfg.api_key != api_key and cfg.claim_token:
+        async def _release_old() -> None:
+            old_client = PlatformClient(cfg)
+            try:
+                await old_client.release_session()
+            except Exception:
+                pass
+            finally:
+                await old_client.close()
+
+        import asyncio
+        asyncio.run(_release_old())
+
     cfg.api_key = api_key
-    path = save_config(cfg)
-    click.echo(f"✓ API key saved to {path}")
-    if cfg.is_configured:
-        click.echo(f"  Platform: {cfg.platform_url}")
+    cfg.claim_token = None
+    cfg.claim_expires_at = None
+    save_config(cfg)
+
+    # Claim a session
+    label = socket.gethostname()
+
+    async def _claim() -> None:
+        client = PlatformClient(cfg)
+        try:
+            data = await client.claim_session(label=label, force=force)
+            click.echo(f"✓ API key saved and session started on '{data['label']}'")
+            click.echo(f"  Session valid until: {data['expires_at']}")
+            click.echo(f"  Platform: {cfg.platform_url}")
+            click.echo(
+                "\n  To use this key on another machine run:\n"
+                f"    agentguard config set-key {api_key} --force"
+            )
+        except Exception as exc:
+            # Claim failed — may be 409 (in use) or platform unreachable
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code == 409:
+                detail = exc.response.json().get("detail", str(exc))  # type: ignore[union-attr]
+                click.echo(f"⚠  {detail}", err=True)
+                click.echo(
+                    "\nTo transfer the session to this machine:\n"
+                    f"  agentguard config set-key {api_key} --force",
+                    err=True,
+                )
+                sys.exit(1)
+            else:
+                # Platform unreachable — save key anyway, claim later
+                click.echo(f"✓ API key saved to {cfg.platform_url}")
+                click.echo(
+                    "  ⚠ Could not reach platform to start session claim "
+                    "(will retry on next request).",
+                    err=True,
+                )
+        finally:
+            await client.close()
+
+    asyncio.run(_claim())
 
 
 @config_group.command(name="set-url")

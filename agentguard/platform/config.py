@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,12 +30,36 @@ class PlatformConfig:
     batch_size: int = 50
     flush_interval_seconds: float = 30.0
     timeout_seconds: float = 10.0
+    # ── Session claim ────────────────────────────────────────────
+    # Ephemeral token issued by POST /engine/claim.  Sent as X-Claim-Token.
+    claim_token: str | None = None
+    # UTC ISO-8601 string — used to detect stale claims without an HTTP round-trip.
+    claim_expires_at: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_configured(self) -> bool:
         """True if an API key is set and reporting is enabled."""
         return bool(self.api_key) and self.enabled
+
+    @property
+    def has_live_claim(self) -> bool:
+        """True if the local claim token appears still valid (expiry in the future).
+
+        This is a client-side optimistic check.  The server is authoritative.
+        """
+        if not self.claim_token or not self.claim_expires_at:
+            return False
+        try:
+            from datetime import UTC
+
+            expires = datetime.fromisoformat(self.claim_expires_at)
+            if expires.tzinfo is None:
+                from datetime import timezone
+                expires = expires.replace(tzinfo=timezone.utc)
+            return expires > datetime.now(UTC)
+        except ValueError:
+            return False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a dict for YAML storage."""
@@ -51,6 +76,10 @@ class PlatformConfig:
             d["flush_interval_seconds"] = self.flush_interval_seconds
         if self.timeout_seconds != 10.0:
             d["timeout_seconds"] = self.timeout_seconds
+        if self.claim_token:
+            d["claim_token"] = self.claim_token
+        if self.claim_expires_at:
+            d["claim_expires_at"] = self.claim_expires_at
         if self.extra:
             d.update(self.extra)
         return d
@@ -61,6 +90,7 @@ class PlatformConfig:
         known_keys = {
             "api_key", "platform_url", "enabled",
             "batch_size", "flush_interval_seconds", "timeout_seconds",
+            "claim_token", "claim_expires_at",
         }
         extra = {k: v for k, v in data.items() if k not in known_keys}
         return cls(
@@ -70,6 +100,8 @@ class PlatformConfig:
             batch_size=data.get("batch_size", 50),
             flush_interval_seconds=data.get("flush_interval_seconds", 30.0),
             timeout_seconds=data.get("timeout_seconds", 10.0),
+            claim_token=data.get("claim_token"),
+            claim_expires_at=data.get("claim_expires_at"),
             extra=extra,
         )
 
