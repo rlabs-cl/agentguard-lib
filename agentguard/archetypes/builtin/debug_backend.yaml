@@ -73,3 +73,7 @@ debug_config:
     - "The bug appears to be in a third-party dependency, not the project code"
     - "The symptom is non-deterministic and cannot be reproduced with the available information"
     - "The fix would affect more than 5 files or more than 3 layers — escalate with a plan first"
+
+benchmark:
+  profile: "generic"
+  improvement_threshold: 0.03

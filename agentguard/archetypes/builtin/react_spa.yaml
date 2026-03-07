@@ -132,3 +132,7 @@ scoring_weights:
   api_migration_cost: 0.5  # Partial — API client coupling
   test_surface: 1.0
   team_onboarding: 1.0
+
+benchmark:
+  profile: "code"
+  improvement_threshold: 0.05

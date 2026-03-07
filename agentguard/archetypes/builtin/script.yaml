@@ -78,3 +78,7 @@ scoring_weights:
   api_migration_cost: 0.0  # N/A
   test_surface: 0.5
   team_onboarding: 0.5
+
+benchmark:
+  profile: "code"
+  improvement_threshold: 0.05

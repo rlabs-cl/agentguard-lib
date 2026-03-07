@@ -87,3 +87,7 @@ scoring_weights:
   api_migration_cost: 0.3  # Low — CLI interfaces rarely need migration cost analysis
   test_surface: 1.0
   team_onboarding: 1.0
+
+benchmark:
+  profile: "code"
+  improvement_threshold: 0.05

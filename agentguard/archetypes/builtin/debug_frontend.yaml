@@ -75,3 +75,7 @@ debug_config:
     - "The bug only reproduces in a specific browser or device — request that information"
     - "The symptom is a performance regression — escalate with profiler data requested"
     - "The fix would affect more than 4 components across more than 2 feature areas"
+
+benchmark:
+  profile: "generic"
+  improvement_threshold: 0.03
