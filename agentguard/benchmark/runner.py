@@ -22,7 +22,7 @@ import logging
 import time as _time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agentguard.benchmark.types import (
     BenchmarkConfig,
@@ -76,8 +76,11 @@ def _wrap_profile(profile: Any) -> _EvaluatorFn:
         operational_threshold: float,
         llm: object,
     ) -> tuple[ReadinessScore, ReadinessScore]:
-        return profile.evaluate(spec, files, enterprise_threshold, operational_threshold)
-    return _eval  # type: ignore[return-value]
+        return cast(
+            "tuple[ReadinessScore, ReadinessScore]",
+            profile.evaluate(spec, files, enterprise_threshold, operational_threshold),
+        )
+    return _eval
 
 
 def _wrap_criteria(evaluator: Any) -> _EvaluatorFn:
@@ -89,8 +92,11 @@ def _wrap_criteria(evaluator: Any) -> _EvaluatorFn:
         operational_threshold: float,
         llm: object,
     ) -> tuple[ReadinessScore, ReadinessScore]:
-        return await evaluator.evaluate(spec, files, llm)  # type: ignore[arg-type]
-    return _eval  # type: ignore[return-value]
+        return cast(
+            "tuple[ReadinessScore, ReadinessScore]",
+            await evaluator.evaluate(spec, files, llm),
+        )
+    return _eval
 
 
 def _extract_inline_specs(archetype: Archetype) -> list[BenchmarkSpec]:
@@ -435,7 +441,7 @@ class BenchmarkRunner:
             # Profiles module not imported yet — trigger registration
             from agentguard.benchmark.profiles import builtin as _b  # noqa: F401
             generic = get_profile("generic")
-        return _wrap_profile(generic)  # type: ignore[arg-type]
+        return _wrap_profile(generic)
 
     # ══════════════════════════════════════════════════════════
     #  Report building

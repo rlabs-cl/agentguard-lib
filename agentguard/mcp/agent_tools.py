@@ -34,14 +34,17 @@ import functools as _functools
 import json
 import logging
 import time as _time
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 from agentguard.mcp.usage_tracker import get_tracker as _get_tracker
 
 logger = logging.getLogger(__name__)
 
+_AsyncFn = TypeVar("_AsyncFn", bound=Callable[..., Awaitable[Any]])
 
-def _track_mcp_tool(fn: Any) -> Any:
+
+def _track_mcp_tool(fn: _AsyncFn) -> _AsyncFn:
     """Decorator: records one ``mcp_tool`` analytics event per tool call.
 
     Extracts the ``archetype`` / ``target_archetype`` kwarg as the slug.
@@ -68,7 +71,7 @@ def _track_mcp_tool(fn: Any) -> Any:
             if _is_terminal:
                 _tr.force_flush()
 
-    return _wrapper
+    return _wrapper  # type: ignore[return-value]
 
 
 # ── helpers ────────────────────────────────────────────────────────
