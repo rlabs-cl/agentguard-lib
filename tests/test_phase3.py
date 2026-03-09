@@ -422,7 +422,7 @@ class TestMCPConfiguration:
         # Debug/migrate tools
         assert "debug" in tool_names
         assert "migrate" in tool_names
-        assert len(tool_names) == 17
+        assert len(tool_names) == 18
 
 
 # ================================================================== #
@@ -749,6 +749,31 @@ class TestAgentNativeTools:
             assert "lines" in fd
             assert "exports" in fd
             assert "patterns" in fd
+
+    @pytest.mark.asyncio
+    async def test_digest_accepts_files_dict(self) -> None:
+        """Issue #38: digest should accept `files` as a dict (not only files_json string)."""
+        from agentguard.mcp.agent_tools import agentguard_digest
+
+        files_dict = {
+            "main.py": "def hello():\n    return 'world'\n",
+        }
+        # New preferred parameter: files (dict)
+        result = await agentguard_digest(files=files_dict, archetype="api_backend")
+        data = json.loads(result)
+        assert data["level"] == "Project Digest"
+        assert data["cross_cutting"]["total_files"] == 1
+
+    @pytest.mark.asyncio
+    async def test_migrate_accepts_files_alias(self) -> None:
+        """Issue #38: migrate should accept `files` as alias for source_files."""
+        from agentguard.mcp.agent_tools import agentguard_migrate
+
+        files_dict = {"app.py": "import flask\napp = flask.Flask(__name__)\n"}
+        result = await agentguard_migrate(files=files_dict, target_archetype="api_backend")
+        data = json.loads(result)
+        assert data["tool"] == "migrate"
+        assert len(data["source_files_digest"]) == 1
 
     @pytest.mark.asyncio
     async def test_react_spa_archetype_loads(self) -> None:
