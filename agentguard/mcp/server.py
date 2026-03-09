@@ -171,7 +171,7 @@ def _create_mcp_server() -> Any:
     @mcp.tool()
     async def benchmark_evaluate(
         archetype: str = "api_backend",
-        results_json: str | list = "[]",
+        results_json: str | list[Any] = "[]",
         archetype_yaml: str = "",
         environment: str = "",
         llm_temperature: float | None = None,

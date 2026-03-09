@@ -1169,7 +1169,7 @@ async def agentguard_benchmark(
 @_track_mcp_tool
 async def agentguard_benchmark_evaluate(
     archetype: str = "api_backend",
-    results_json: str | list = "[]",
+    results_json: str | list[Any] = "[]",
     archetype_yaml: str = "",
     environment: str = "",
     llm_temperature: float | None = None,
