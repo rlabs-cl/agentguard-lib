@@ -225,7 +225,7 @@ class ArchetypeRegistry:
         return sorted(self._entries.keys())
 
     def _load_builtins(self) -> None:
-        """Load all YAML archetypes from the builtin directory."""
+        """Load all YAML archetypes from the builtin directory and user install dir."""
         self._loaded_builtins = True
 
         if not _BUILTIN_DIR.exists():
@@ -253,6 +253,59 @@ class ArchetypeRegistry:
                 if self._strict:
                     raise
                 _log.warning("Failed to validate built-in archetype %s", yaml_file.name, exc_info=True)
+
+        # Load user-installed archetypes from ~/.agentguard/archetypes/
+        self._load_user_archetypes()
+
+    def _load_user_archetypes(self) -> None:
+        """Load user-installed archetypes from ~/.agentguard/archetypes/.
+
+        Errors are logged and skipped so a corrupt user archetype never prevents
+        the registry from starting.  Official (built-in) archetypes are never
+        overwritten by user-installed ones.
+        """
+        user_dir = Path.home() / ".agentguard" / "archetypes"
+        if not user_dir.exists():
+            return
+
+        for yaml_file in sorted(user_dir.glob("*.yaml")):
+            raw = yaml_file.read_text(encoding="utf-8")
+            try:
+                self.register_validated(raw, trust_level=TrustLevel.community)
+                _log.debug("Loaded user archetype: %s", yaml_file.stem)
+            except Exception:
+                _log.warning(
+                    "Failed to load user archetype %s — skipping",
+                    yaml_file.name,
+                    exc_info=True,
+                )
+
+    def reload_user_archetypes(self) -> list[str]:
+        """Remove and re-scan user-installed archetypes from ~/.agentguard/archetypes/.
+
+        This is safe to call from a long-running process (e.g. MCP server) after
+        ``agentguard install`` adds a new archetype mid-session.  Built-in
+        (official) archetypes are never removed.
+
+        Returns:
+            Sorted list of archetype IDs that were (re)loaded from the user dir.
+        """
+        # Remove all non-official entries so stale installs don't linger
+        to_remove = [
+            aid for aid, entry in self._entries.items()
+            if entry.trust_level != TrustLevel.official
+        ]
+        for aid in to_remove:
+            del self._entries[aid]
+
+        self._load_user_archetypes()
+
+        reloaded = sorted(
+            aid for aid, entry in self._entries.items()
+            if entry.trust_level != TrustLevel.official
+        )
+        _log.info("Reloaded %d user archetype(s): %s", len(reloaded), reloaded)
+        return reloaded
 
 
 class IntegrityError(Exception):

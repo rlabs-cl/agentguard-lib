@@ -38,7 +38,15 @@ class TestRegistrySingleton:
 
     def test_builtins_loaded_with_hashes(self):
         reg = get_archetype_registry()
-        for arch_id in reg.list_available():
+        # Only check built-in (official) archetypes — user-installed community
+        # archetypes may also be present in the registry when the developer has
+        # ~/.agentguard/archetypes/ populated.
+        official_ids = [
+            aid for aid in reg.list_available()
+            if reg.get_entry(aid).trust_level == TrustLevel.official
+        ]
+        assert len(official_ids) > 0, "No official archetypes loaded"
+        for arch_id in official_ids:
             entry = reg.get_entry(arch_id)
             assert entry.trust_level == TrustLevel.official
             assert len(entry.content_hash) == 64
