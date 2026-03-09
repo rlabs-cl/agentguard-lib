@@ -694,7 +694,8 @@ class TestAgentNativeTools:
             spec="Build a calc", skeleton_json=skeleton, archetype="script",
         )
         data = json.loads(result)
-        assert "deprecation" in data
+        assert "DEPRECATION_WARNING" in data
+        assert "contracts_and_wiring" in data["DEPRECATION_WARNING"]
 
     @pytest.mark.asyncio
     async def test_wiring_legacy_has_deprecation(self) -> None:
@@ -705,7 +706,8 @@ class TestAgentNativeTools:
         })
         result = await agentguard_wiring(contracts_json=contracts, archetype="script")
         data = json.loads(result)
-        assert "deprecation" in data
+        assert "DEPRECATION_WARNING" in data
+        assert "contracts_and_wiring" in data["DEPRECATION_WARNING"]
 
     @pytest.mark.asyncio
     async def test_challenge_criteria_includes_maturity(self) -> None:

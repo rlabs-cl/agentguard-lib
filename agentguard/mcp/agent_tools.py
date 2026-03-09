@@ -427,6 +427,11 @@ async def agentguard_contracts(
 
     return json.dumps(
         {
+            "DEPRECATION_WARNING": (
+                "This tool is deprecated. Use `contracts_and_wiring` instead "
+                "for a merged L2+L3 flow that saves ~15K tokens. "
+                "Stop and switch to `contracts_and_wiring` now."
+            ),
             "level": "L2 — Contracts",
             "description": (
                 "For each file, generate typed function/class stubs with "
@@ -434,10 +439,6 @@ async def agentguard_contracts(
             ),
             "file_count": len(file_prompts),
             "files": file_prompts,
-            "deprecation": (
-                "Consider using `contracts_and_wiring` for a merged L2+L3 "
-                "flow (saves ~15K tokens)."
-            ),
             "next_step": "Once all stubs are done, call the `wiring` tool.",
         },
         indent=2,
@@ -480,6 +481,11 @@ async def agentguard_wiring(
 
     return json.dumps(
         {
+            "DEPRECATION_WARNING": (
+                "This tool is deprecated. Use `contracts_and_wiring` instead "
+                "for a merged L2+L3 flow that saves ~15K tokens. "
+                "Stop and switch to `contracts_and_wiring` now."
+            ),
             "level": "L3 — Wiring",
             "description": (
                 "Wire imports and call chains between files. Keep all function "
@@ -487,10 +493,6 @@ async def agentguard_wiring(
             ),
             "file_count": len(file_prompts),
             "files": file_prompts,
-            "deprecation": (
-                "Consider using `contracts_and_wiring` for a merged L2+L3 "
-                "flow (saves ~15K tokens)."
-            ),
             "next_step": "Once wiring is done, call the `logic` tool for each function.",
         },
         indent=2,
@@ -1254,6 +1256,68 @@ async def agentguard_benchmark_evaluate(
                     f"{api_url.replace('api.', 'app.') if api_url.startswith('https://api.') else api_url}"
                     f"/dashboard/archetypes"
                 )
+            elif resp.status_code == 404 and archetype_yaml_for_upload:
+                # Archetype doesn't exist yet — auto-create as draft then retry
+                try:
+                    import re as _re
+                    import yaml as _yaml
+                    _parsed_yaml = _yaml.safe_load(archetype_yaml_for_upload)
+                    _arch_name = (
+                        _parsed_yaml.get("name") if isinstance(_parsed_yaml, dict) else None
+                    ) or archetype_slug.replace("-", " ").title()
+                    _arch_description = (
+                        _parsed_yaml.get("description") if isinstance(_parsed_yaml, dict) else None
+                    ) or ""
+                    create_body = {
+                        "name": _arch_name,
+                        "slug": archetype_slug,
+                        "description": _arch_description[:500],
+                        "yaml_content": archetype_yaml_for_upload,
+                    }
+                    async with httpx.AsyncClient(timeout=15.0) as _client:
+                        create_resp = await _client.post(
+                            f"{api_url}/api/marketplace/archetypes",
+                            json=create_body,
+                            headers={"Authorization": f"Bearer {api_key}"},
+                        )
+                    if create_resp.status_code in (200, 201):
+                        # Draft created — retry the benchmark upload
+                        async with httpx.AsyncClient(timeout=15.0) as _client:
+                            retry_resp = await _client.put(
+                                f"{api_url}/api/marketplace/archetypes/{archetype_slug}/benchmark",
+                                json=upload_body,
+                                headers={"Authorization": f"Bearer {api_key}"},
+                            )
+                        if retry_resp.status_code in (200, 201):
+                            upload_status["success"] = True
+                            upload_status["auto_created_draft"] = True
+                            upload_status["platform_url"] = (
+                                f"{api_url.replace('api.', 'app.') if api_url.startswith('https://api.') else api_url}"
+                                f"/dashboard/archetypes"
+                            )
+                        else:
+                            upload_status["success"] = False
+                            upload_status["auto_created_draft"] = True
+                            upload_status["status_code"] = retry_resp.status_code
+                            try:
+                                upload_status["detail"] = retry_resp.json().get("detail", retry_resp.text[:200])
+                            except Exception:
+                                upload_status["detail"] = retry_resp.text[:200]
+                    else:
+                        upload_status["success"] = False
+                        upload_status["status_code"] = create_resp.status_code
+                        try:
+                            upload_status["detail"] = create_resp.json().get("detail", create_resp.text[:200])
+                        except Exception:
+                            upload_status["detail"] = create_resp.text[:200]
+                        upload_status["fix"] = (
+                            f"Auto-create draft failed (HTTP {create_resp.status_code}). "
+                            "Check AGENTGUARD_API_KEY and ensure the slug is available."
+                        )
+                except Exception as create_exc:
+                    upload_status["success"] = False
+                    upload_status["detail"] = str(create_exc)
+                    upload_status["fix"] = "Auto-create draft failed due to an error. Check AGENTGUARD_API_KEY."
             else:
                 upload_status["success"] = False
                 upload_status["status_code"] = resp.status_code
@@ -1261,6 +1325,11 @@ async def agentguard_benchmark_evaluate(
                     upload_status["detail"] = resp.json().get("detail", resp.text[:200])
                 except Exception:
                     upload_status["detail"] = resp.text[:200]
+                if resp.status_code == 404:
+                    upload_status["fix"] = (
+                        f"Archetype '{archetype_slug}' not found on the platform. "
+                        "Pass `archetype_yaml` with your YAML definition to auto-create it as a draft."
+                    )
         except Exception as exc:
             upload_status["success"] = False
             upload_status["detail"] = str(exc)
