@@ -65,6 +65,53 @@ agentguard info api_backend   # Show archetype details
 
 ---
 
+## What's New in v0.5.0
+
+This release contains **10 MCP tool improvements** focused on agent ergonomics, parameter consistency, and better error recovery.
+
+### Error recovery
+- **`skeleton`** — When an unknown `archetype` is passed, instead of raising an exception, the tool now returns the list of available archetype IDs and a `fix` hint, so the agent can self-correct without a round-trip failure.
+
+### Deprecation visibility
+- **`contracts` / `wiring`** — The `DEPRECATION_WARNING` key is now the **first** key in the response JSON. AI agents process keys in order, so placing the warning first ensures they switch to `contracts_and_wiring` immediately rather than continuing the deprecated flow.
+
+### Precise next steps
+- **`contracts_and_wiring`** — The `next_step` field now includes the exact function call signature — `logic(archetype=..., file_path=..., file_code=..., function_name=...)` — so agents don't have to infer it.
+
+### Consistent parameter naming (`files` across all tools)
+The three file-intake tools now share the same parameter name:
+
+| Tool | v0.4 parameter | v0.5 parameter | Legacy alias |
+|------|---------------|----------------|:------------:|
+| `digest` | `files_json` (str only) | `files` (dict **or** JSON string) | `files_json` ✓ |
+| `debug` | `sources` | `files` | `sources` ✓ |
+| `migrate` | `source_files` | `files` | `source_files` ✓ |
+
+All legacy names still work — no breaking changes.
+
+### `digest` — archetype is now optional
+The `archetype` parameter in `digest` is now optional. When omitted, the output is archetype-agnostic and no API key or registry lookup is performed — ideal for quick reviews of files that don't belong to a specific archetype.
+
+### `debug` — tech stack context and defaults
+- The response now includes an `archetype_tech_stack` block (language, framework, database, testing), giving the agent richer context when forming hypotheses.
+- When an archetype's `debug_config` has empty protocol lists, the tool automatically falls back to sensible built-in defaults instead of returning empty arrays.
+
+### `benchmark` — upload transparency
+- Added `upload_note`: explains that results are auto-uploaded when `AGENTGUARD_API_KEY` is set, with instructions to pass `upload=false` to opt out.
+- Added `tip_unknown_archetype`: guides agents to call `list_archetypes` when unsure of the archetype ID.
+
+### `benchmark_evaluate` — auto-create draft on 404
+- When an upload returns HTTP 404 and `archetype_yaml` is provided, the tool now **automatically creates a draft archetype** on the platform, then retries the upload — no manual dashboard visit needed.
+- All HTTP error responses now include an actionable `fix` field (per status code: 401/403/404/other).
+
+### `trace_summary` — prerequisite documented
+The tool now returns a clear prerequisite message: traces are only persisted when the HTTP server is started with `--trace-store`. Without it, there is nothing to query.
+
+### `generate` — clarified as workflow plan
+The tool now clearly documents that it returns a **structured workflow plan** (skeleton → contracts_and_wiring → logic → validate) for the calling agent to execute with its own LLM — not an internal generation call.
+
+---
+
 ## How It Works
 
 AgentGuard uses a **top-down generation pipeline** that builds code from architecture to implementation, not the other way around:
@@ -294,41 +341,61 @@ No API key is needed for the agent-native tools — the host LLM does all the ge
 
 #### MCP Tools Reference
 
-The MCP server exposes **17 tools** in three categories:
+The MCP server exposes **18 tools** in three categories:
 
 **Agent-native tools (no API key needed — the host LLM does the work):**
 
 | Tool | Step | What It Returns |
-|------|------|-----------------|
-| `skeleton` | L1 | File tree with responsibilities, tiers (config/foundation/feature), and infrastructure file requirements |
-| `contracts_and_wiring` | L2+L3 | Typed function stubs + import wiring per file, merged in one pass (saves ~15K tokens vs separate calls) |
-| `contracts` | L2 | Typed stubs only (use `contracts_and_wiring` instead for most cases) |
-| `wiring` | L3 | Import connections only (use `contracts_and_wiring` instead for most cases) |
-| `logic` | L4 | Instructions for implementing one function body — call once per `NotImplementedError` stub |
-| `get_challenge_criteria` | Review | Archetype-specific quality checklist (30+ criteria for `react_spa`) with review format instructions |
-| `digest` | Review | Compact project summary (~200 lines) for efficient self-challenge without re-reading every file |
-| `validate` | Check | Structural validation: syntax, lint, types, imports — returns pass/fail with details |
-| `debug` | Debug | Structured debugging protocol: load data sources → form hypotheses → minimal fix or escalation report |
-| `migrate` | Migrate | Migration plan: digest source files → concern checklist → incompatibility flags → step-by-step port |
-| `list_archetypes` | Info | Names and descriptions of all available archetypes |
-| `get_archetype` | Info | Full archetype config: tech stack, validation rules, challenge criteria, infrastructure files |
-| `trace_summary` | Info | Summary of the last generation: LLM calls, tokens, cost |
+|------|------|:----------------|
+| `skeleton` | L1 | File tree with responsibilities, tiers (config/foundation/feature), and infrastructure file requirements. Returns available archetype list with a `fix` hint when an unknown archetype is passed. |
+| `contracts_and_wiring` | L2+L3 | Typed function stubs + import wiring per file, merged in one pass (saves ~15K tokens vs separate calls). Includes the exact `logic()` call signature in `next_step`. |
+| `contracts` | L2 | **[Deprecated]** Typed stubs only. `DEPRECATION_WARNING` is the first key in the response — use `contracts_and_wiring` instead. |
+| `wiring` | L3 | **[Deprecated]** Import connections only. `DEPRECATION_WARNING` is the first key in the response — use `contracts_and_wiring` instead. |
+| `logic` | L4 | Instructions for implementing one function body — call once per `NotImplementedError` stub. |
+| `get_challenge_criteria` | Review | Archetype-specific quality checklist (30+ criteria for `react_spa`) with review format instructions. |
+| `digest` | Review | Compact project summary (~200 lines) for efficient self-challenge. **`files`** accepts a dict or JSON string; **`archetype`** is optional (omit for archetype-agnostic digests). |
+| `validate` | Check | Structural validation: syntax, lint, types, imports — returns pass/fail with details. |
+| `debug` | Debug | Structured debugging protocol: load data sources → form hypotheses → minimal fix or escalation report. **`files`** is the preferred parameter (replaces `sources`). Includes `archetype_tech_stack` and sensible defaults when `debug_config` lists are empty. |
+| `migrate` | Migrate | Migration plan: digest source files → concern checklist → incompatibility flags → step-by-step port. **`files`** is the preferred parameter (replaces `source_files`). |
+| `list_archetypes` | Info | Names and descriptions of all available archetypes (built-in + user-installed). |
+| `get_archetype` | Info | Full archetype config: tech stack, validation rules, challenge criteria, infrastructure files. |
+| `reload_archetypes` | Info | Re-scan `~/.agentguard/archetypes/` and load any archetypes installed since the server started — call this after `agentguard install <slug>`. |
+| `trace_summary` | Info | Summary of the last generation trace. **Requires `--trace-store` flag** when starting `agentguard serve` — without it, no traces are persisted and this tool always returns empty. |
 
 **Benchmark tools (no API key needed — pure static analysis):**
 
 | Tool | What It Does |
-|------|-------------|
-| `benchmark` | Returns 5 benchmark specs (one per complexity level) for comparative evaluation — the agent generates code WITH and WITHOUT AgentGuard tools |
-| `benchmark_evaluate` | Scores control vs treatment code across 13 readiness dimensions (7 enterprise + 6 operational) using AST-based static analysis |
+|------|:------------|
+| `benchmark` | Returns 5 benchmark specs (one per complexity level) for comparative evaluation. Includes `upload_note` (auto-upload behavior when `AGENTGUARD_API_KEY` is set) and `tip_unknown_archetype` (call `list_archetypes` if unsure of archetype ID). |
+| `benchmark_evaluate` | Scores control vs treatment code across 13 readiness dimensions (7 enterprise + 6 operational) using AST-based static analysis. **Auto-creates a draft archetype** on the platform when a 404 occurs and `archetype_yaml` is provided. Returns actionable `fix` hints per HTTP error code (401/403/404/other). |
 
 **Full-pipeline tools (require a separate LLM API key configured on the server):**
 
 | Tool | What It Does |
-|------|-------------|
-| `generate` | Runs the entire L1→L2→L3→L4→validate→challenge pipeline using AgentGuard's internal LLM |
-| `challenge` | LLM-based self-review using AgentGuard's internal LLM |
+|------|:------------|
+| `generate` | Returns a structured **workflow plan** (skeleton → contracts_and_wiring → logic → validate) for the calling agent to execute with its own LLM. Use this as an entry point when you want a single tool call to define the full generation sequence. |
+| `challenge` | Returns a structured **self-review task** for the calling agent — packages code and criteria into a review prompt the agent executes itself using its own LLM. |
 
-> **When to use which:** If your MCP host is already an LLM (Claude Desktop, Cursor, etc.), use the agent-native tools — they're free and the host LLM does better work when it follows the structured prompts itself. Use `generate`/`challenge` only if your MCP client is a thin script without its own LLM.
+> **When to use which:** If your MCP host is already an LLM (Claude Desktop, Cursor, etc.), use the agent-native tools — they're free and the host LLM does better work when it follows the structured prompts itself. Use `generate` as a single entry-point call that returns the full workflow plan; use `challenge` for ad-hoc self-review of specific code.
+
+> **Consistent parameter naming:** The file-intake tools (`digest`, `debug`, `migrate`) all share the same `files` parameter — a dict mapping `filepath → content` or a JSON string of that dict. Legacy aliases (`files_json`, `sources`, `source_files`) are still accepted but the unified `files` name is preferred.
+
+#### Marketplace Archetypes in the MCP Server
+
+You can extend the MCP server with community archetypes from the AgentGuard marketplace:
+
+```bash
+# Install a marketplace archetype to ~/.agentguard/archetypes/
+agentguard install archetype_author
+
+# The server automatically includes user-installed archetypes on startup.
+# If you install while the server is already running, call the reload tool:
+# (from your AI coding tool) → reload_archetypes
+```
+
+After calling `reload_archetypes`, `list_archetypes` will include the newly installed archetype and the pipeline tools (`skeleton`, `contracts_and_wiring`, etc.) can use it immediately.
+
+> **Unknown archetype?** If you pass an archetype ID that doesn't exist, `skeleton` now returns the list of available IDs with a `fix` hint — so the agent can self-correct without a round-trip failure. For the full list at any time, call `list_archetypes` (no parameters needed).
 
 #### SSE Transport (for remote MCP clients)
 
@@ -338,6 +405,18 @@ agentguard mcp-serve
 
 # SSE transport (for network/remote clients)
 agentguard mcp-serve --transport sse --port 8421
+```
+
+#### Trace Storage (for `trace_summary`)
+
+The `trace_summary` MCP tool requires the HTTP server to be started with the `--trace-store` flag. Without it, no traces are persisted and the tool always returns an empty result.
+
+```bash
+# Start HTTP server with trace persistence enabled
+agentguard serve --trace-store
+
+# Then after running a generation workflow, call trace_summary from your AI tool
+# → trace_summary()
 ```
 
 ---
