@@ -256,7 +256,7 @@ async def agentguard_skeleton(
                 "error": f"Archetype '{archetype}' not found.",
                 "available": available_ids,
                 "fix": (
-                    f"Pass one of the listed archetype IDs as the `archetype` parameter. "
+                    "Pass one of the listed archetype IDs as the `archetype` parameter. "
                     "Call `list_archetypes` to get full descriptions."
                 ),
             },
@@ -628,9 +628,9 @@ async def agentguard_get_challenge_criteria(
 
 @_track_mcp_tool
 async def agentguard_digest(
-    files: "dict[str, str] | str | None" = None,
+    files: dict[str, str] | str | None = None,
     archetype: str | None = None,
-    files_json: "str | None" = None,  # deprecated: use `files` instead
+    files_json: str | None = None,  # deprecated: use `files` instead
 ) -> str:
     """Generate a compact project digest for efficient self-challenge review.
 
@@ -769,8 +769,8 @@ async def agentguard_digest(
 async def agentguard_debug(
     symptom: str,
     archetype: str = "debug_backend",
-    sources: "dict[str, str] | None" = None,
-    files: "dict[str, str] | None" = None,  # preferred alias for sources
+    sources: dict[str, str] | None = None,
+    files: dict[str, str] | None = None,  # preferred alias for sources
 ) -> str:
     """Return a structured debugging protocol for the calling agent to execute.
 
@@ -908,10 +908,10 @@ async def agentguard_debug(
 
 @_track_mcp_tool
 async def agentguard_migrate(
-    source_files: "dict[str, str] | None" = None,
+    source_files: dict[str, str] | None = None,
     target_archetype: str = "api_backend",
     spec: str = "",
-    files: "dict[str, str] | None" = None,  # preferred alias for source_files
+    files: dict[str, str] | None = None,  # preferred alias for source_files
 ) -> str:
     """Return a structured migration plan for the calling agent to execute.
 
@@ -1280,10 +1280,7 @@ async def agentguard_benchmark_evaluate(
     # ── STEP 1–3: Score ───────────────────────────────────────────
     # Accept both a JSON string and a pre-parsed Python list so that agents
     # can pass results_json as either format without causing empty runs.
-    if isinstance(results_json, list):
-        results = results_json
-    else:
-        results = json.loads(results_json)
+    results = results_json if isinstance(results_json, list) else json.loads(results_json)
 
     # If archetype was not explicitly passed (still the default "api_backend")
     # try to infer it from the first result entry so the report is not
@@ -1383,7 +1380,6 @@ async def agentguard_benchmark_evaluate(
             elif resp.status_code == 404 and archetype_yaml_for_upload:
                 # Archetype doesn't exist yet — auto-create as draft then retry
                 try:
-                    import re as _re
                     import yaml as _yaml
                     _parsed_yaml = _yaml.safe_load(archetype_yaml_for_upload)
                     _arch_name = (

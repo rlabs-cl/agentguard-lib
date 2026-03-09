@@ -142,9 +142,9 @@ def _create_mcp_server() -> Any:
 
     @mcp.tool()
     async def digest(
-        files: "dict[str, str] | str | None" = None,
+        files: dict[str, str] | str | None = None,
         archetype: str | None = None,
-        files_json: "str | None" = None,
+        files_json: str | None = None,
     ) -> str:
         """Generate a compact project digest for efficient self-challenge review.
         Accepts `files` as a dict (path → content) or JSON string — same format as `validate`.
@@ -220,8 +220,8 @@ def _create_mcp_server() -> Any:
     async def debug(
         symptom: str,
         archetype: str = "debug_backend",
-        files: "dict[str, str] | None" = None,
-        sources: "dict[str, str] | None" = None,
+        files: dict[str, str] | None = None,
+        sources: dict[str, str] | None = None,
     ) -> str:
         """Return a structured debugging protocol for you (the calling agent) to execute.
         Loads the archetype's debug_config (data_sources, hypothesis_protocol,
@@ -237,10 +237,10 @@ def _create_mcp_server() -> Any:
 
     @mcp.tool()
     async def migrate(
-        source_files: "dict[str, str] | None" = None,
+        source_files: dict[str, str] | None = None,
         target_archetype: str = "api_backend",
         spec: str = "",
-        files: "dict[str, str] | None" = None,
+        files: dict[str, str] | None = None,
     ) -> str:
         """Return a structured migration plan for you (the calling agent) to execute.
         Loads the target archetype's migration_config (risk_areas, concern_protocol,
