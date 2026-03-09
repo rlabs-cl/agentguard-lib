@@ -142,15 +142,17 @@ def _create_mcp_server() -> Any:
 
     @mcp.tool()
     async def digest(
-        files_json: str,
+        files: "dict[str, str] | str | None" = None,
         archetype: str = "api_backend",
+        files_json: "str | None" = None,
     ) -> str:
         """Generate a compact project digest for efficient self-challenge review.
-        Instead of reading every file in full, extracts exports, signatures,
-        import graphs and key patterns into a ~200 line summary.
+        Accepts `files` as a dict (path → content) or JSON string — same format as `validate`.
+        `files_json` is a deprecated alias for `files`; prefer `files` in new code.
+        Extracts exports, signatures, import graphs and key patterns into a ~200 line summary.
         No API key needed."""
         return await agentguard_digest(
-            files_json=files_json, archetype=archetype,
+            files=files, archetype=archetype, files_json=files_json,
         )
 
     @mcp.tool()
@@ -169,7 +171,7 @@ def _create_mcp_server() -> Any:
     @mcp.tool()
     async def benchmark_evaluate(
         archetype: str = "api_backend",
-        results_json: str = "[]",
+        results_json: str | list = "[]",
         archetype_yaml: str = "",
         environment: str = "",
         llm_temperature: float | None = None,
@@ -218,32 +220,38 @@ def _create_mcp_server() -> Any:
     async def debug(
         symptom: str,
         archetype: str = "debug_backend",
-        sources: dict[str, str] | None = None,
+        files: "dict[str, str] | None" = None,
+        sources: "dict[str, str] | None" = None,
     ) -> str:
         """Return a structured debugging protocol for you (the calling agent) to execute.
         Loads the archetype's debug_config (data_sources, hypothesis_protocol,
         fix_protocol, escalation_criteria) and packages it with the reported symptom
         and any evidence collected.  YOU follow the protocol — form hypotheses,
         select the root cause, write a minimal fix, or escalate.
+        Pass `files` (or legacy `sources`) as a dict mapping path → content.
         No API key needed."""
         return await agentguard_debug(
-            symptom=symptom, archetype=archetype, sources=sources,
+            symptom=symptom, archetype=archetype,
+            files=files, sources=sources,
         )
 
     @mcp.tool()
     async def migrate(
-        source_files: dict[str, str],
+        source_files: "dict[str, str] | None" = None,
         target_archetype: str = "api_backend",
         spec: str = "",
+        files: "dict[str, str] | None" = None,
     ) -> str:
         """Return a structured migration plan for you (the calling agent) to execute.
         Loads the target archetype's migration_config (risk_areas, concern_protocol,
         incompatibility_signals, step_order), digests the source files, and returns
         a protocol YOU follow: answer the concern checklist, flag incompatibilities,
         then port the code step by step.
+        Pass source files via `files` (preferred) or legacy `source_files` (dict path → content).
         No API key needed."""
         return await agentguard_migrate(
-            source_files=source_files, target_archetype=target_archetype, spec=spec,
+            source_files=source_files, target_archetype=target_archetype,
+            spec=spec, files=files,
         )
 
     # ── Utility tools (pure computation, no LLM) ──────────────────
@@ -253,6 +261,7 @@ def _create_mcp_server() -> Any:
         agentguard_generate,
         agentguard_get_archetype,
         agentguard_list_archetypes,
+        agentguard_reload_archetypes,
         agentguard_trace_summary,
         agentguard_validate,
     )
@@ -278,6 +287,14 @@ def _create_mcp_server() -> Any:
         """Get detailed configuration for a specific archetype
         (tech stack, validation rules, challenge criteria)."""
         return await agentguard_get_archetype(name=name)
+
+    @mcp.tool()
+    async def reload_archetypes() -> str:
+        """Reload user-installed archetypes from ~/.agentguard/archetypes/.
+
+        Call this after running 'agentguard install <slug>' so the MCP server
+        picks up the new archetype without restarting."""
+        return await agentguard_reload_archetypes()
 
     @mcp.tool()
     async def trace_summary(trace_id: str | None = None) -> str:
