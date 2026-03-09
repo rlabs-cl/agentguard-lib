@@ -281,7 +281,10 @@ def _create_mcp_server() -> Any:
 
     @mcp.tool()
     async def trace_summary(trace_id: str | None = None) -> str:
-        """Get summary of the last generation trace: LLM calls, cost, results."""
+        """Get summary of the last generation trace: LLM calls, cost, results.
+        PREREQUISITE: requires the AgentGuard HTTP server started with --trace-store
+        (e.g. `agentguard serve --trace-store`). Without that flag no traces are
+        persisted and this tool returns an empty result."""
         return await agentguard_trace_summary(trace_id=trace_id)
 
     # ── Full-pipeline tools (require LLM API key) ─────────────────
@@ -293,9 +296,11 @@ def _create_mcp_server() -> Any:
         spec: str,
         archetype: str = "api_backend",
     ) -> str:
-        """Return structured generation instructions for you (the calling agent) to execute.
-        YOU generate all code using your own LLM by following the returned workflow:
-        skeleton → contracts_and_wiring → logic → validate → get_challenge_criteria."""
+        """Returns a WORKFLOW PLAN (not code) for the calling agent to follow.
+        This tool does NOT generate or execute code — it returns structured
+        step-by-step instructions (skeleton → contracts_and_wiring → logic →
+        validate → get_challenge_criteria) that YOU (the agent) must execute
+        using the other MCP tools."""
         return await agentguard_generate(spec=spec, archetype=archetype)
 
     @mcp.tool()

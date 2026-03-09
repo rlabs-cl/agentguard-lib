@@ -110,13 +110,20 @@ async def agentguard_validate(
             },
             "self_challenge_criteria": arch.self_challenge.criteria,
         }
-    except Exception:
-        config = {
-            "tech_stack": {"language": archetype},
-            "validation": {"checks": ["syntax", "lint", "types", "imports", "structure"]},
-            "structure": {},
-            "self_challenge_criteria": [],
-        }
+    except KeyError:
+        available = Archetype.list_available()
+        return json.dumps(
+            {
+                "error": f"Archetype '{archetype}' not found.",
+                "available": available,
+                "hint": (
+                    "Install a marketplace archetype with: agentguard install <slug>. "
+                    "If the MCP server was already running when you installed it, "
+                    "call the reload_archetypes tool first."
+                ),
+            },
+            indent=2,
+        )
 
     return json.dumps(
         {
@@ -274,15 +281,45 @@ async def agentguard_get_archetype(name: str) -> str:
     )
 
 
+async def agentguard_reload_archetypes() -> str:
+    """Reload user-installed archetypes from ~/.agentguard/archetypes/.
+
+    Call this after running ``agentguard install <slug>`` in a terminal so that
+    the MCP server picks up the newly installed archetype without restarting.
+    Built-in archetypes are never removed.
+    """
+    from agentguard.archetypes.registry import get_archetype_registry
+
+    registry = get_archetype_registry()
+    reloaded = registry.reload_user_archetypes()
+    all_ids = registry.list_available()
+    return json.dumps(
+        {
+            "status": "ok",
+            "user_archetypes_reloaded": reloaded,
+            "all_available": all_ids,
+        },
+        indent=2,
+    )
+
+
 async def agentguard_trace_summary(trace_id: str | None = None) -> str:
     """Get a summary of a generation trace: LLM calls, cost, validation results.
+
+    PREREQUISITE: Traces are only stored when the AgentGuard HTTP server is
+    started with the ``--trace-store`` flag (e.g. ``agentguard serve --trace-store``).
+    Without that flag, no traces are persisted and this tool always returns an empty result.
 
     If trace_id is omitted, returns info about the last trace (if available).
     """
     return json.dumps(
         {
-            "note": "Trace lookup requires a trace store. "
-            "Use the HTTP server with --trace-store for persistent traces.",
+            "note": (
+                "Trace lookup requires the HTTP server to be running with "
+                "--trace-store enabled. Start the server with: "
+                "  agentguard serve --trace-store\n"
+                "Then re-run your workflow and call trace_summary again."
+            ),
             "trace_id": trace_id,
         },
         indent=2,

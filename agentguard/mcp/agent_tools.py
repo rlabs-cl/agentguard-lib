@@ -245,7 +245,23 @@ async def agentguard_skeleton(
       instead of re-reading full files.
     - Emits ``infrastructure_files`` that MUST be included based on maturity.
     """
-    arch = _load_arch(archetype)
+    try:
+        arch = _load_arch(archetype)
+    except Exception:
+        # Archetype not found — return helpful error with available list
+        from agentguard.archetypes.registry import get_archetype_registry
+        available_ids = get_archetype_registry().list_available()
+        return json.dumps(
+            {
+                "error": f"Archetype '{archetype}' not found.",
+                "available": available_ids,
+                "fix": (
+                    f"Pass one of the listed archetype IDs as the `archetype` parameter. "
+                    "Call `list_archetypes` to get full descriptions."
+                ),
+            },
+            indent=2,
+        )
     effective_maturity = maturity or getattr(arch, "maturity", "production")
 
     template = _get_prompt("skeleton")
@@ -382,8 +398,10 @@ async def agentguard_contracts_and_wiring(
                 "Data layer functions SHOULD be async-compatible.",
             ],
             "next_step": (
-                "Once all stubs are done, call `logic` for each function "
-                "that needs implementation."
+                "Once all stubs are done, for each function body that needs implementation call: "
+                "logic(archetype=\"<archetype>\", file_path=\"<path>\", "
+                "file_code=\"<full file content>\", function_name=\"<function name>\"). "
+                "Repeat for every NotImplementedError stub, then call `validate`."
             ),
         },
         indent=2,
@@ -1018,6 +1036,10 @@ async def agentguard_benchmark(
             ),
             "archetype": archetype,
             "total_specs": len(spec_list),
+            "tip_unknown_archetype": (
+                "Not sure which archetype to use? Call `list_archetypes` "
+                "(no parameters needed) to see all available IDs and descriptions."
+            ),
             "specs": spec_list,
             "instructions": {
                 "important": (
