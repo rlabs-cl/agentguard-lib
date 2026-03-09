@@ -316,3 +316,23 @@ async def agentguard_benchmark(
     runner = BenchmarkRunner(archetype=archetype, config=config, llm=model or None)
     report = await runner.run()
     return report.to_json()
+
+
+async def agentguard_reload_archetypes() -> str:
+    """Reload the archetype registry and return the current list of available archetypes.
+
+    Useful after installing a new archetype via ``agentguard install <slug>``
+    to pick up the change without restarting the MCP server.
+    """
+    from agentguard.archetypes.registry import get_archetype_registry, reset_registry
+
+    reset_registry()
+    registry = get_archetype_registry()
+    all_ids = registry.list_available()
+    return json.dumps(
+        {
+            "status": "ok",
+            "all_available": all_ids,
+        },
+        indent=2,
+    )

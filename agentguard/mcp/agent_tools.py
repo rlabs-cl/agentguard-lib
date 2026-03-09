@@ -610,8 +610,9 @@ async def agentguard_get_challenge_criteria(
 
 @_track_mcp_tool
 async def agentguard_digest(
-    files_json: str,
-    archetype: str = "api_backend",
+    files: "dict[str, str] | str | None" = None,
+    archetype: str | None = None,
+    files_json: "str | None" = None,  # deprecated: use `files` instead
 ) -> str:
     """Generate a compact project digest for efficient self-challenge review.
 
@@ -621,20 +622,38 @@ async def agentguard_digest(
     digest without re-reading full source.
 
     Args:
-        files_json: JSON object mapping file paths to their full source code.
-        archetype: Archetype ID for context.
+        files: Mapping of file paths to their full source code (dict or JSON string).
+            Preferred parameter name — consistent with `validate` and `debug`.
+        archetype: Optional archetype ID for context labelling. When omitted
+            the output has no hardcoded archetype field so the digest is
+            archetype-agnostic.
+        files_json: Deprecated alias for `files`. Use `files` instead.
 
     Returns:
         Structured digest with per-file summaries and cross-cutting analysis.
     """
-    arch = _load_arch(archetype)
-    files: dict[str, str] = json.loads(files_json)
+    # Resolve: `files` takes priority; fall back to deprecated `files_json` alias
+    _raw = files if files is not None else files_json
+    if _raw is None:
+        return json.dumps(
+            {"error": "Parameter `files` is required (dict or JSON string mapping path→content)."},
+            indent=2,
+        )
+    files_data: dict[str, str] = json.loads(_raw) if isinstance(_raw, str) else _raw
+    # Resolve archetype label without failing when not provided
+    arch_id: str | None = None
+    if archetype:
+        try:
+            arch = _load_arch(archetype)
+            arch_id = arch.id
+        except Exception:
+            arch_id = archetype  # use the slug as-is if not found
 
     file_digests: list[dict[str, Any]] = []
     all_exports: dict[str, list[str]] = {}
     total_lines = 0
 
-    for path, code in sorted(files.items()):
+    for path, code in sorted(files_data.items()):
         lines = code.split("\n")
         total_lines += len(lines)
         line_count = len(lines)
@@ -657,7 +676,7 @@ async def agentguard_digest(
                 exports.append(sig)
             elif "export default" in stripped:
                 exports.append(stripped)
-        all_exports[path] = exports
+        all_exports[path] = exports  # noqa: F841
 
         # Detect patterns
         patterns: list[str] = []
@@ -688,9 +707,9 @@ async def agentguard_digest(
 
     # Cross-cutting analysis
     cross_cutting = {
-        "total_files": len(files),
+        "total_files": len(files_data),
         "total_lines": total_lines,
-        "avg_lines_per_file": round(total_lines / max(len(files), 1)),
+        "avg_lines_per_file": round(total_lines / max(len(files_data), 1)),
         "files_over_150_lines": [
             d["path"] for d in file_digests if d["over_150_lines"]
         ],
@@ -708,23 +727,22 @@ async def agentguard_digest(
         ),
     }
 
-    return json.dumps(
-        {
+    result: dict[str, Any] = {
             "level": "Project Digest",
             "description": (
                 "Compact summary for self-challenge review. "
                 f"Condensed {total_lines} source lines into a structured digest."
             ),
-            "archetype": arch.id,
             "files": file_digests,
             "cross_cutting": cross_cutting,
             "usage": (
                 "Pass the challenge criteria and this digest to your self-review. "
                 "Only read full files if a specific criterion needs deeper inspection."
             ),
-        },
-        indent=2,
-    )
+        }
+    if arch_id is not None:
+        result["archetype"] = arch_id
+    return json.dumps(result, indent=2)
 
 
 # ── 8. debug (agent-native) ────────────────────────────────────────
@@ -733,7 +751,8 @@ async def agentguard_digest(
 async def agentguard_debug(
     symptom: str,
     archetype: str = "debug_backend",
-    sources: dict[str, str] | None = None,
+    sources: "dict[str, str] | None" = None,
+    files: "dict[str, str] | None" = None,  # preferred alias for sources
 ) -> str:
     """Return a structured debugging protocol for the calling agent to execute.
 
@@ -750,13 +769,43 @@ async def agentguard_debug(
         arch = _load_arch(archetype)
         dbg = arch.debug_config
         debug_config: dict[str, Any] = {
-            "data_sources": dbg.data_sources,
-            "hypothesis_protocol": dbg.hypothesis_protocol,
-            "fix_protocol": dbg.fix_protocol,
-            "escalation_criteria": dbg.escalation_criteria,
+            "archetype_tech_stack": {
+                "language": arch.tech_stack.language,
+                "framework": arch.tech_stack.framework,
+                "database": getattr(arch.tech_stack, "database", None),
+                "testing": getattr(arch.tech_stack, "testing", None),
+            },
+            "data_sources": dbg.data_sources or [
+                "application logs",
+                "stack traces / error messages",
+                "environment variables and config",
+                "recent git diff",
+                "relevant test output",
+            ],
+            "hypothesis_protocol": dbg.hypothesis_protocol or [
+                "Restate the symptom in one sentence.",
+                "Identify the system boundary where the failure manifests.",
+                "Trace the call path from entry point to failure site.",
+                "List ≤5 hypotheses ordered by likelihood.",
+                "For each hypothesis, state the evidence that would confirm or refute it.",
+                "Select the highest-confidence hypothesis and proceed to fix_protocol.",
+            ],
+            "fix_protocol": dbg.fix_protocol or [
+                "Make the minimal change that addresses the root cause.",
+                "Verify that existing tests still pass.",
+                "Add a regression test that would have caught this bug.",
+                "Describe the reproduction steps and the fix in a short comment.",
+            ],
+            "escalation_criteria": dbg.escalation_criteria or [
+                "Root cause is indeterminate after exhausting all data_sources.",
+                "Fix requires a schema migration or breaking API change.",
+                "Issue originates in a third-party dependency.",
+                "Failure is non-deterministic or environment-specific.",
+            ],
         }
     except Exception:
         debug_config = {
+            "archetype_tech_stack": None,
             "data_sources": [
                 "application logs",
                 "stack traces / error messages",
@@ -796,7 +845,7 @@ async def agentguard_debug(
                 "the debugging yourself."
             ),
             "symptom": symptom,
-            "provided_sources": sources or {},
+            "provided_sources": files if files is not None else (sources or {}),
             "debug_config": debug_config,
             "instructions": [
                 "Review all keys in `provided_sources` for initial evidence.",
@@ -841,9 +890,10 @@ async def agentguard_debug(
 
 @_track_mcp_tool
 async def agentguard_migrate(
-    source_files: dict[str, str],
+    source_files: "dict[str, str] | None" = None,
     target_archetype: str = "api_backend",
     spec: str = "",
+    files: "dict[str, str] | None" = None,  # preferred alias for source_files
 ) -> str:
     """Return a structured migration plan for the calling agent to execute.
 
@@ -906,9 +956,12 @@ async def agentguard_migrate(
         }
         target_stack = {"language": target_archetype}
 
+    # Resolve: `files` (preferred) takes priority over `source_files` (legacy)
+    _source_files: dict[str, str] = files if files is not None else (source_files or {})
+
     # Produce a compact digest of the source files for the agent
     source_summary: list[dict[str, Any]] = []
-    for path, content in (source_files or {}).items():
+    for path, content in _source_files.items():
         lines = content.splitlines()
         source_summary.append(
             {
@@ -998,9 +1051,36 @@ async def agentguard_benchmark(
         JSON with benchmark specs and instructions for the agent.
     """
     from agentguard.benchmark.catalog import get_default_specs
+    from agentguard.benchmark.types import BenchmarkSpec, Complexity
 
-    cat = category or archetype
-    specs = get_default_specs(cat)
+    # Prefer custom specs embedded in the archetype YAML over catalog defaults.
+    # Fall back to catalog only when the archetype has no benchmark.specs defined.
+    arch_specs: list[BenchmarkSpec] | None = None
+    try:
+        arch = _load_arch(archetype)
+        inline = getattr(arch, "benchmark_config", None)
+        if inline and getattr(inline, "specs", None):
+            # benchmark_config.specs is a dict[str, str]: complexity → spec text
+            complexity_order = ["trivial", "low", "medium", "high", "enterprise"]
+            arch_specs = [
+                BenchmarkSpec(
+                    complexity=Complexity(lvl),
+                    spec=inline.specs[lvl],
+                    category=archetype,
+                )
+                for lvl in complexity_order
+                if lvl in inline.specs
+            ]
+    except (KeyError, Exception):
+        pass  # archetype not found or has no inline specs — fall through to catalog
+
+    if arch_specs:
+        specs = arch_specs
+        spec_source = "archetype"
+    else:
+        cat = category or archetype
+        specs = get_default_specs(cat)
+        spec_source = "catalog"
 
     spec_list = [
         {
@@ -1019,8 +1099,14 @@ async def agentguard_benchmark(
                 "AgentGuard tools, then evaluate both with benchmark_evaluate."
             ),
             "archetype": archetype,
+            "spec_source": spec_source,
             "total_specs": len(spec_list),
             "specs": spec_list,
+            "upload_note": (
+                "After benchmark_evaluate runs, results are automatically uploaded "
+                "to your AgentGuard account if AGENTGUARD_API_KEY is set. "
+                "Pass upload=false to benchmark_evaluate to skip the upload."
+            ),
             "instructions": {
                 "important": (
                     "YOU (the calling agent) must generate ALL code yourself using "
@@ -1043,13 +1129,15 @@ async def agentguard_benchmark(
                 ),
                 "evaluate": (
                     "Once you have control and treatment file dicts for all "
-                    "specs, call `benchmark_evaluate` with the results."
+                    f"specs, call benchmark_evaluate with archetype=\"{archetype}\" "
+                    "and results_json as a JSON array of run objects. "
+                    "Each element must have complexity, spec, control_files, treatment_files."
                 ),
             },
             "next_step": (
-                "Start with the first spec. Write CONTROL code yourself (no tools), "
+                f"Start with the first spec. Write CONTROL code yourself (no tools), "
                 "then write TREATMENT code yourself guided by AgentGuard structural "
-                "tools. Repeat for each spec, then call `benchmark_evaluate`."
+                f"tools. Repeat for each spec, then call benchmark_evaluate(archetype=\"{archetype}\", ...)."
             ),
         },
         indent=2,
@@ -1059,7 +1147,7 @@ async def agentguard_benchmark(
 @_track_mcp_tool
 async def agentguard_benchmark_evaluate(
     archetype: str = "api_backend",
-    results_json: str = "[]",
+    results_json: str | list = "[]",
     archetype_yaml: str = "",
     environment: str = "",
     llm_temperature: float | None = None,
@@ -1168,7 +1256,21 @@ async def agentguard_benchmark_evaluate(
             )
 
     # ── STEP 1–3: Score ───────────────────────────────────────────
-    results = json.loads(results_json)
+    # Accept both a JSON string and a pre-parsed Python list so that agents
+    # can pass results_json as either format without causing empty runs.
+    if isinstance(results_json, list):
+        results = results_json
+    else:
+        results = json.loads(results_json)
+
+    # If archetype was not explicitly passed (still the default "api_backend")
+    # try to infer it from the first result entry so the report is not
+    # mis-labelled when the agent omits the parameter.
+    if archetype_slug == "api_backend" and results:
+        inferred = results[0].get("archetype") or results[0].get("archetype_id")
+        if inferred:
+            archetype_slug = inferred
+
     runs: list[ComplexityRun] = []
 
     for entry in results:
@@ -1322,17 +1424,36 @@ async def agentguard_benchmark_evaluate(
                 upload_status["success"] = False
                 upload_status["status_code"] = resp.status_code
                 try:
-                    upload_status["detail"] = resp.json().get("detail", resp.text[:200])
+                    detail = resp.json().get("detail", resp.text[:200])
+                    upload_status["detail"] = detail
                 except Exception:
-                    upload_status["detail"] = resp.text[:200]
+                    detail = resp.text[:200]
+                    upload_status["detail"] = detail
+                # Provide actionable fix instructions based on failure reason
                 if resp.status_code == 404:
                     upload_status["fix"] = (
                         f"Archetype '{archetype_slug}' not found on the platform. "
-                        "Pass `archetype_yaml` with your YAML definition to auto-create it as a draft."
+                        "Pass `archetype_yaml` with your YAML definition to auto-create "
+                        "it as a draft, or create it manually at https://app.agentguard.dev."
+                    )
+                elif resp.status_code in (401, 403):
+                    upload_status["fix"] = (
+                        "Authentication failed. Check the AGENTGUARD_API_KEY environment variable."
+                    )
+                else:
+                    upload_status["fix"] = (
+                        f"Upload failed (HTTP {resp.status_code}). "
+                        "Set upload=false on next run to save results locally, "
+                        "then retry the upload."
                     )
         except Exception as exc:
             upload_status["success"] = False
             upload_status["detail"] = str(exc)
+            upload_status["fix"] = (
+                "Upload failed due to a network or client error. "
+                "Ensure AGENTGUARD_API_KEY is set and the platform is reachable. "
+                "The benchmark results are available in this response — copy them if needed."
+            )
 
     created_at_str = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
 
