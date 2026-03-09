@@ -142,8 +142,8 @@ def _create_mcp_server() -> Any:
 
     @mcp.tool()
     async def digest(
-        files_json: str,
-        archetype: str = "api_backend",
+        files_json: str | None = None,
+        archetype: str | None = None,
     ) -> str:
         """Generate a compact project digest for efficient self-challenge review.
         Instead of reading every file in full, extracts exports, signatures,

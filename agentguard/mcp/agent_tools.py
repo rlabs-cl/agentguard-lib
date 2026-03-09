@@ -609,7 +609,7 @@ async def agentguard_get_challenge_criteria(
 @_track_mcp_tool
 async def agentguard_digest(
     files_json: str,
-    archetype: str = "api_backend",
+    archetype: str | None = None,
 ) -> str:
     """Generate a compact project digest for efficient self-challenge review.
 
@@ -620,12 +620,21 @@ async def agentguard_digest(
 
     Args:
         files_json: JSON object mapping file paths to their full source code.
-        archetype: Archetype ID for context.
+        archetype: Optional archetype ID for context labelling. When omitted
+            the output has no hardcoded archetype field so the digest is
+            archetype-agnostic.
 
     Returns:
         Structured digest with per-file summaries and cross-cutting analysis.
     """
-    arch = _load_arch(archetype)
+    # Resolve archetype label without failing when not provided
+    arch_id: str | None = None
+    if archetype:
+        try:
+            arch = _load_arch(archetype)
+            arch_id = arch.id
+        except Exception:
+            arch_id = archetype  # use the slug as-is if not found
     files: dict[str, str] = json.loads(files_json)
 
     file_digests: list[dict[str, Any]] = []
@@ -706,23 +715,22 @@ async def agentguard_digest(
         ),
     }
 
-    return json.dumps(
-        {
+    result: dict[str, Any] = {
             "level": "Project Digest",
             "description": (
                 "Compact summary for self-challenge review. "
                 f"Condensed {total_lines} source lines into a structured digest."
             ),
-            "archetype": arch.id,
             "files": file_digests,
             "cross_cutting": cross_cutting,
             "usage": (
                 "Pass the challenge criteria and this digest to your self-review. "
                 "Only read full files if a specific criterion needs deeper inspection."
             ),
-        },
-        indent=2,
-    )
+        }
+    if arch_id is not None:
+        result["archetype"] = arch_id
+    return json.dumps(result, indent=2)
 
 
 # ── 8. debug (agent-native) ────────────────────────────────────────
@@ -748,13 +756,43 @@ async def agentguard_debug(
         arch = _load_arch(archetype)
         dbg = arch.debug_config
         debug_config: dict[str, Any] = {
-            "data_sources": dbg.data_sources,
-            "hypothesis_protocol": dbg.hypothesis_protocol,
-            "fix_protocol": dbg.fix_protocol,
-            "escalation_criteria": dbg.escalation_criteria,
+            "archetype_tech_stack": {
+                "language": arch.tech_stack.language,
+                "framework": arch.tech_stack.framework,
+                "database": getattr(arch.tech_stack, "database", None),
+                "testing": getattr(arch.tech_stack, "testing", None),
+            },
+            "data_sources": dbg.data_sources or [
+                "application logs",
+                "stack traces / error messages",
+                "environment variables and config",
+                "recent git diff",
+                "relevant test output",
+            ],
+            "hypothesis_protocol": dbg.hypothesis_protocol or [
+                "Restate the symptom in one sentence.",
+                "Identify the system boundary where the failure manifests.",
+                "Trace the call path from entry point to failure site.",
+                "List ≤5 hypotheses ordered by likelihood.",
+                "For each hypothesis, state the evidence that would confirm or refute it.",
+                "Select the highest-confidence hypothesis and proceed to fix_protocol.",
+            ],
+            "fix_protocol": dbg.fix_protocol or [
+                "Make the minimal change that addresses the root cause.",
+                "Verify that existing tests still pass.",
+                "Add a regression test that would have caught this bug.",
+                "Describe the reproduction steps and the fix in a short comment.",
+            ],
+            "escalation_criteria": dbg.escalation_criteria or [
+                "Root cause is indeterminate after exhausting all data_sources.",
+                "Fix requires a schema migration or breaking API change.",
+                "Issue originates in a third-party dependency.",
+                "Failure is non-deterministic or environment-specific.",
+            ],
         }
     except Exception:
         debug_config = {
+            "archetype_tech_stack": None,
             "data_sources": [
                 "application logs",
                 "stack traces / error messages",
@@ -1019,6 +1057,11 @@ async def agentguard_benchmark(
             "archetype": archetype,
             "total_specs": len(spec_list),
             "specs": spec_list,
+            "upload_note": (
+                "After benchmark_evaluate runs, results are automatically uploaded "
+                "to your AgentGuard account if AGENTGUARD_API_KEY is set. "
+                "Pass upload=false to benchmark_evaluate to skip the upload."
+            ),
             "instructions": {
                 "important": (
                     "YOU (the calling agent) must generate ALL code yourself using "
@@ -1258,12 +1301,36 @@ async def agentguard_benchmark_evaluate(
                 upload_status["success"] = False
                 upload_status["status_code"] = resp.status_code
                 try:
-                    upload_status["detail"] = resp.json().get("detail", resp.text[:200])
+                    detail = resp.json().get("detail", resp.text[:200])
+                    upload_status["detail"] = detail
                 except Exception:
-                    upload_status["detail"] = resp.text[:200]
+                    detail = resp.text[:200]
+                    upload_status["detail"] = detail
+                # Provide actionable fix instructions based on failure reason
+                if resp.status_code == 404:
+                    upload_status["fix"] = (
+                        f"Archetype '{archetype_slug}' not found on the platform. "
+                        "Pass `archetype_yaml` with your YAML definition to auto-create "
+                        "it as a draft, or create it manually at https://app.agentguard.dev."
+                    )
+                elif resp.status_code in (401, 403):
+                    upload_status["fix"] = (
+                        "Authentication failed. Check the AGENTGUARD_API_KEY environment variable."
+                    )
+                else:
+                    upload_status["fix"] = (
+                        f"Upload failed (HTTP {resp.status_code}). "
+                        "Set upload=false on next run to save results locally, "
+                        "then retry the upload."
+                    )
         except Exception as exc:
             upload_status["success"] = False
             upload_status["detail"] = str(exc)
+            upload_status["fix"] = (
+                "Upload failed due to a network or client error. "
+                "Ensure AGENTGUARD_API_KEY is set and the platform is reachable. "
+                "The benchmark results are available in this response — copy them if needed."
+            )
 
     created_at_str = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
 
