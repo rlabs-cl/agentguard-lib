@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from agentguard.llm.types import CostEstimate, LLMResponse, TokenUsage
+from agentguard.types import CostEstimate, LLMResponse, TokenUsage
 from agentguard.tracing.cost import PRICING_TABLE, get_model_pricing
 from agentguard.tracing.trace import Span, SpanType, Trace, TraceSummary
 from agentguard.tracing.tracer import Tracer

@@ -421,57 +421,7 @@ class TestTimer:
         assert timer.elapsed_ms >= 40  # Allow some margin
 
 
-# ─── Pipeline integration (mock-based) ───────────────────────────
-
-
-class TestPipelinePlatformIntegration:
-    """Verify that Pipeline initializes platform client based on config."""
-
-    def test_pipeline_no_platform_by_default(self) -> None:
-        """Pipeline should have no platform client when nothing is configured."""
-        from agentguard.pipeline import Pipeline
-
-        with patch("agentguard.pipeline.create_llm_provider") as mock_llm:
-            mock_llm.return_value = MagicMock(provider_name="mock")
-            pipe = Pipeline(
-                archetype="api_backend",
-                llm="mock/model",
-                report_usage=False,
-            )
-            assert pipe.platform is None
-
-    def test_pipeline_with_platform_config(self) -> None:
-        """Pipeline should create a platform client when config is provided."""
-        from agentguard.pipeline import Pipeline
-
-        cfg = PlatformConfig(api_key="ag_test_pipeline")
-
-        with patch("agentguard.pipeline.create_llm_provider") as mock_llm:
-            mock_llm.return_value = MagicMock(provider_name="mock")
-            pipe = Pipeline(
-                archetype="api_backend",
-                llm="mock/model",
-                platform_config=cfg,
-                report_usage=True,
-            )
-            assert pipe.platform is not None
-            assert pipe.platform.is_configured is True
-
-    def test_pipeline_report_false_disables(self) -> None:
-        """report_usage=False should always disable platform."""
-        from agentguard.pipeline import Pipeline
-
-        cfg = PlatformConfig(api_key="ag_key")
-
-        with patch("agentguard.pipeline.create_llm_provider") as mock_llm:
-            mock_llm.return_value = MagicMock(provider_name="mock")
-            pipe = Pipeline(
-                archetype="api_backend",
-                llm="mock/model",
-                platform_config=cfg,
-                report_usage=False,
-            )
-            assert pipe.platform is None
+# Note: TestPipelinePlatformIntegration removed in v0.6.0 (Pipeline class gutted).
 
 
 class TestPlatformConfigClaim:

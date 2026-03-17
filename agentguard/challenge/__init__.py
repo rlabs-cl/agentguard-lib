@@ -1,4 +1,4 @@
-"""Self-challenge module — LLM-based semantic quality gate."""
+"""Self-challenge module -- criteria rendering and grounding checks."""
 
 from agentguard.challenge.challenger import SelfChallenger
 from agentguard.challenge.grounding import GroundingChecker

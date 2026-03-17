@@ -1,10 +1,8 @@
-"""Challenge types — shared dataclasses for self-challenge."""
+"""Challenge types -- shared dataclasses for self-challenge."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
-from agentguard.llm.types import CostEstimate
 
 
 @dataclass
@@ -31,7 +29,6 @@ class ChallengeResult:
     grounding_violations: list[str] = field(default_factory=list)
     feedback: str | None = None
     rework_output: str | None = None
-    cost: CostEstimate = field(default_factory=CostEstimate.zero)
 
     @property
     def failed_criteria(self) -> list[CriterionResult]:

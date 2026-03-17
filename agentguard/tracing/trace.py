@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from agentguard.llm.types import CostEstimate, TokenUsage
+from agentguard.types import CostEstimate, TokenUsage
 
 
 class SpanType(StrEnum):

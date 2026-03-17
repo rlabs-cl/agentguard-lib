@@ -1,4 +1,4 @@
-"""L1 Skeleton — generate the file tree with responsibilities."""
+"""L1 Skeleton — render the skeleton prompt for the calling agent."""
 
 from __future__ import annotations
 
@@ -6,35 +6,30 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from agentguard.llm.types import GenerationConfig
 from agentguard.prompts.registry import get_prompt_registry
 from agentguard.topdown.types import FileEntry, SkeletonResult
-from agentguard.tracing.trace import SpanType
 
 if TYPE_CHECKING:
     from agentguard.archetypes.base import Archetype
-    from agentguard.llm.base import LLMProvider
-    from agentguard.tracing.tracer import Tracer
 
 logger = logging.getLogger(__name__)
 
 
-async def generate_skeleton(
+def render_skeleton_prompt(
     spec: str,
     archetype: Archetype,
-    llm: LLMProvider,
-    tracer: Tracer,
-) -> SkeletonResult:
-    """L1: Generate file tree with one-line responsibilities.
+) -> list[dict[str, str]]:
+    """Render the L1 skeleton prompt messages.
+
+    Returns the rendered messages for the calling agent to use
+    with its own LLM. Does not call any LLM itself.
 
     Args:
         spec: Natural language project specification.
         archetype: Project archetype (configures structure expectations).
-        llm: LLM provider to use.
-        tracer: Tracer for recording spans.
 
     Returns:
-        SkeletonResult with list of FileEntry objects.
+        List of message dicts (role/content) for the skeleton prompt.
     """
     prompt_registry = get_prompt_registry()
     template = prompt_registry.get("skeleton")
@@ -47,17 +42,16 @@ async def generate_skeleton(
         expected_structure=archetype.get_expected_structure_text(),
     )
 
-    with tracer.span("L1_skeleton", SpanType.LEVEL) as _level_span, tracer.span("llm_skeleton", SpanType.LLM_CALL) as llm_span:
-        response = await llm.generate(
-            messages,
-            config=GenerationConfig(temperature=0.0, max_tokens=4096),
-        )
-        tracer.record_llm_response(llm_span, response)
+    return messages
 
-    # Parse the JSON response into FileEntry objects
-    files = _parse_skeleton_response(response.content)
 
-    logger.info("L1 skeleton: %d files generated", len(files))
+def parse_skeleton_response(content: str) -> SkeletonResult:
+    """Parse LLM output into a SkeletonResult.
+
+    Handles both clean JSON and JSON wrapped in markdown fences.
+    """
+    files = _parse_skeleton_response(content)
+    logger.info("L1 skeleton: %d files parsed", len(files))
     return SkeletonResult(files=files)
 
 

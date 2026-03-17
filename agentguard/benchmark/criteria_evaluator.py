@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from agentguard.benchmark.types import BenchmarkCriterion, DimensionScore, ReadinessScore
 
 if TYPE_CHECKING:
-    from agentguard.llm.base import LLMProvider
+    from typing import Any
 
 _MAX_CONTENT_CHARS = 4000
 _MAX_SPEC_CHARS = 500
@@ -66,7 +66,7 @@ class CriteriaBasedEvaluator:
         self,
         spec: str,
         files: dict[str, str],
-        llm: LLMProvider,
+        llm: Any,
     ) -> tuple[ReadinessScore, ReadinessScore]:
         """Judge output against each criterion.
 
@@ -112,9 +112,9 @@ class CriteriaBasedEvaluator:
         spec: str,
         content: str,
         criterion: BenchmarkCriterion,
-        llm: LLMProvider,
+        llm: Any,
     ) -> DimensionScore:
-        from agentguard.llm.types import Message
+        from agentguard.types import Message
 
         prompt = _JUDGE_PROMPT.format(
             spec=spec[:_MAX_SPEC_CHARS],

@@ -1,18 +1,15 @@
 """Hierarchical summarizer — compress large artifacts to fit token budgets.
 
-Uses a cheap/fast LLM (e.g. Gemini Flash) to produce summaries when
-context items exceed their allocated budget.
+Falls back to simple truncation (the default in v0.6.0 since LLM providers
+have been removed from the library).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Any
 
-from agentguard.llm.types import GenerationConfig, Message
-
-if TYPE_CHECKING:
-    from agentguard.llm.base import LLMProvider
+from agentguard.types import GenerationConfig, Message
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +32,16 @@ Output ONLY the summary.\
 
 
 class HierarchicalSummarizer:
-    """Compress large artifacts to fit token budgets using an LLM.
+    """Compress large artifacts to fit token budgets.
 
-    Uses a cheap/fast model for summarization to minimise cost.
-    Falls back to simple truncation if no LLM is available.
+    In v0.6.0 the built-in LLM providers are removed, so this class
+    defaults to simple truncation. Callers who supply their own LLM
+    (any object with an async ``generate(messages, config)`` method)
+    can still get LLM-based summarization.
 
     Usage::
 
-        summarizer = HierarchicalSummarizer(llm=cheap_model)
+        summarizer = HierarchicalSummarizer()
         short = await summarizer.summarize(
             long_text,
             target_tokens=500,
@@ -52,13 +51,13 @@ class HierarchicalSummarizer:
 
     def __init__(
         self,
-        llm: LLMProvider | None = None,
+        llm: Any | None = None,
         config: GenerationConfig | None = None,
     ) -> None:
         """Initialize the summarizer.
 
         Args:
-            llm: LLM to use for summarization (should be cheap/fast).
+            llm: Optional LLM with an async generate(messages, config) method.
                  If None, falls back to simple truncation.
             config: Generation config overrides for summarization calls.
         """
@@ -82,7 +81,6 @@ class HierarchicalSummarizer:
             Summarized text.
         """
         if self._llm is None:
-            # No LLM available — fall back to truncation
             return self._truncate(content, target_tokens)
 
         focus_instruction = ""
@@ -103,7 +101,7 @@ class HierarchicalSummarizer:
         try:
             response = await self._llm.generate(messages, self._config)
             logger.debug(
-                "Summarized %d chars → %d chars (cost: $%s)",
+                "Summarized %d chars -> %d chars (cost: $%s)",
                 len(content),
                 len(response.content),
                 response.cost.total_cost,
@@ -116,7 +114,6 @@ class HierarchicalSummarizer:
     @staticmethod
     def _truncate(content: str, target_tokens: int) -> str:
         """Simple truncation fallback (no LLM needed)."""
-        # ~4 chars per token
         target_chars = target_tokens * 4
         if len(content) <= target_chars:
             return content
