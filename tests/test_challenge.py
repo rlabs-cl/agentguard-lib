@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from agentguard.challenge.challenger import (
     SelfChallenger,
     _parse_criteria_results,

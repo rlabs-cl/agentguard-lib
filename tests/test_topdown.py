@@ -9,8 +9,6 @@ from agentguard.topdown.logic import (
     _has_not_implemented,
 )
 from agentguard.topdown.skeleton import _parse_skeleton_response
-from agentguard.topdown.types import FileEntry, SkeletonResult
-
 
 # --- Helper tests (synchronous, no LLM) ---
 
