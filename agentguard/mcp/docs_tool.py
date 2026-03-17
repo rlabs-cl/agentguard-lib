@@ -564,6 +564,82 @@ scoring_weights:
   operational: 0.4
 ```
 """,
+    "usage_stats": """\
+# Usage Statistics
+
+AgentGuard tracks tool usage metrics automatically and persists them across
+sessions and projects in a local SQLite database (`~/.agentguard/stats.db`).
+
+## What's Tracked
+
+Every tool call records:
+- **Token usage** (input/output/total, estimated from text length)
+- **Processing time** (wall clock milliseconds)
+- **Tool name** and parameters
+- **Archetype** used
+- **Project** (working directory)
+- **Session** (MCP server instance)
+- **Context compaction** events (before/after size)
+
+## MCP Tools
+
+- `get_usage_stats(period, project, group_by)` — aggregated stats
+  - Periods: `today`, `week`, `month`, `all`
+  - Group by: `tool`, `project`, `day`, `session`
+- `get_session_history(limit)` — recent sessions with summaries
+- `clear_usage_stats(before, project, confirm)` — delete stats (requires confirm=true)
+- `export_usage_stats(target, period, webhook_url, file_path)` — export to platform, webhook, or file
+- `report_compaction(context_before_chars, context_after_chars)` — record compaction events
+
+## Configuration
+
+Configure stats export in your MCP server config. Get your API key from
+the AgentGuard marketplace dashboard (Settings → API Keys).
+
+```json
+{
+  "mcpServers": {
+    "agentguard": {
+      "command": "agentguard-mcp",
+      "env": {
+        "AGENTGUARD_API_KEY": "your-api-key-from-marketplace-dashboard",
+        "AGENTGUARD_API_URL": "https://api.agentguard.rlabs.cl",
+        "AGENTGUARD_STATS_WEBHOOKS": "https://your-api.com/stats,https://your-other-api.com/metrics"
+      }
+    }
+  }
+}
+```
+
+- **AGENTGUARD_API_KEY**: Your user API key from the marketplace (Settings → API Keys).
+  Used for authentication when exporting to the platform.
+- **AGENTGUARD_API_URL**: The AgentGuard platform URL (default: https://api.agentguard.rlabs.cl).
+- **AGENTGUARD_STATS_WEBHOOKS**: Comma-separated list of webhook URLs where stats
+  should also be sent. Each URL receives a POST with the same JSON payload.
+
+With these set, you can export:
+```
+export_usage_stats(target="platform", period="week")   # sends to AgentGuard
+export_usage_stats(target="webhooks", period="week")    # sends to all configured webhooks
+export_usage_stats(target="all", period="week")         # sends to platform + all webhooks
+```
+
+To export to a one-off endpoint (not in config):
+```
+export_usage_stats(target="webhook", webhook_url="https://custom.endpoint.com/stats")
+```
+
+## Viewing Stats on the Platform
+
+- **Authors**: Go to `/dashboard/usage` to see your tool usage, top archetypes, token trends
+- **Admins**: Go to `/admin/usage` for platform-wide stats and leaderboard
+
+## Storage
+
+Stats are stored locally at `~/.agentguard/stats.db` (SQLite, WAL mode).
+They persist across MCP server restarts and different projects.
+To reset: `clear_usage_stats(confirm=true)` or delete the file.
+""",
 }
 
 # Ordered list for the "topics" listing
@@ -583,6 +659,7 @@ _TOPIC_ORDER = [
     "marketplace",
     "configuration",
     "archetype_yaml_schema",
+    "usage_stats",
 ]
 
 
