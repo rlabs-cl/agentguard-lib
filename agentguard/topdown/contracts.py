@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agentguard.prompts.registry import get_prompt_registry
 
@@ -18,7 +18,7 @@ def render_contracts_prompt(
     spec: str,
     skeleton: SkeletonResult,
     archetype: Archetype,
-) -> dict[str, list[dict[str, str]]]:
+) -> dict[str, list[Any]]:
     """Render L2 contract prompts for each code file.
 
     Returns a dict mapping file path to rendered messages for the calling
@@ -34,7 +34,7 @@ def render_contracts_prompt(
     """
     prompt_registry = get_prompt_registry()
     template = prompt_registry.get("contracts")
-    prompts: dict[str, list[dict[str, str]]] = {}
+    prompts: dict[str, list[Any]] = {}
 
     for entry in skeleton.files:
         if not _is_code_file(entry.path):

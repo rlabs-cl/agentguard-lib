@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agentguard.prompts.registry import get_prompt_registry
 from agentguard.topdown.types import FileEntry, SkeletonResult
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def render_skeleton_prompt(
     spec: str,
     archetype: Archetype,
-) -> list[dict[str, str]]:
+) -> list[Any]:
     """Render the L1 skeleton prompt messages.
 
     Returns the rendered messages for the calling agent to use

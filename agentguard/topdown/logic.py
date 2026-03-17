@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agentguard.prompts.registry import get_prompt_registry
 
@@ -31,7 +31,7 @@ def render_logic_prompt(
     function_name: str,
     archetype: Archetype,
     dependency_files: dict[str, str] | None = None,
-) -> list[dict[str, str]]:
+) -> list[Any]:
     """Render the L4 logic prompt for implementing a single function.
 
     Returns rendered messages for the calling agent to use with its own LLM.
