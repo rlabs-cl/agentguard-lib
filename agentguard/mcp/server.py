@@ -10,10 +10,7 @@ Tool categories:
    correct paradigm for MCP: the tool provides *structure*, the agent provides
    *intelligence*.
 
-2. **Pipeline tools** (require LLM API key) — run the full AgentGuard pipeline
-   internally.  Useful for thin/non-LLM clients calling via the HTTP API.
-
-3. **Utility tools** — validation, archetype listing, traces.  Pure computation,
+2. **Utility tools** — validation, archetype listing, traces.  Pure computation,
    no LLM needed.
 """
 
@@ -33,12 +30,10 @@ def _create_mcp_server() -> Any:
         "AgentGuard",
         instructions=(
             "Quality-assured LLM code generation engine. "
-            "Use the agent-native tools (skeleton→contracts_and_wiring→logic→ "
-            "get_challenge_criteria+digest) to get structured prompts that "
-            "guide YOUR own code generation — no API key needed. "
-            "Use validate to mechanically check code you produce. "
-            "The generate/challenge tools run a full internal LLM pipeline "
-            "and require a separate API key — prefer the agent-native tools."
+            "Use the agent-native tools (skeleton -> contracts_and_wiring -> logic -> "
+            "get_challenge_criteria + digest) to get structured prompts that "
+            "guide YOUR own code generation -- no API key needed. "
+            "Use validate to mechanically check code you produce."
         ),
     )
 
@@ -257,8 +252,6 @@ def _create_mcp_server() -> Any:
     # ── Utility tools (pure computation, no LLM) ──────────────────
 
     from agentguard.mcp.tools import (
-        agentguard_challenge,
-        agentguard_generate,
         agentguard_get_archetype,
         agentguard_list_archetypes,
         agentguard_reload_archetypes,
@@ -304,30 +297,31 @@ def _create_mcp_server() -> Any:
         persisted and this tool returns an empty result."""
         return await agentguard_trace_summary(trace_id=trace_id)
 
-    # ── Full-pipeline tools (require LLM API key) ─────────────────
-    # These are for thin/non-LLM clients. When using MCP with an LLM
-    # agent, prefer the agent-native tools above instead.
+    # ── Documentation + update tools ──────────────────────────────
+
+    from agentguard.mcp.docs_tool import get_docs
+    from agentguard.mcp.updater import do_update, get_update_notice
 
     @mcp.tool()
-    async def generate(
-        spec: str,
-        archetype: str = "api_backend",
-    ) -> str:
-        """Returns a WORKFLOW PLAN (not code) for the calling agent to follow.
-        This tool does NOT generate or execute code — it returns structured
-        step-by-step instructions (skeleton → contracts_and_wiring → logic →
-        validate → get_challenge_criteria) that YOU (the agent) must execute
-        using the other MCP tools."""
-        return await agentguard_generate(spec=spec, archetype=archetype)
+    async def docs(topic: str = "overview") -> str:
+        """Get AgentGuard documentation on a specific topic.
+        Topics: overview, installation, archetypes, creating_archetypes, pipeline,
+        skeleton, contracts, wiring, logic, challenge, validation, benchmark,
+        marketplace, configuration, archetype_yaml_schema.
+        Pass a topic name or keyword to search."""
+        return get_docs(topic)
 
     @mcp.tool()
-    async def challenge(
-        code: str,
-        criteria: list[str] | None = None,
-    ) -> str:
-        """Return a structured self-review prompt for you (the calling agent) to execute.
-        YOU review the code using your own LLM against the returned criteria."""
-        return await agentguard_challenge(code=code, criteria=criteria)
+    async def update_agentguard() -> str:
+        """Update AgentGuard to the latest version from PyPI.
+        Returns the update result and instructs to restart the MCP server."""
+        result = await do_update()
+        return result
+
+    # Check for updates on startup (non-blocking)
+    notice = get_update_notice()
+    if notice:
+        logger.info(notice)
 
     # ── Register resources ─────────────────────────────────────────
 

@@ -12,7 +12,7 @@ from agentguard.tracing.trace import Span, SpanType, Trace
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from agentguard.llm.types import LLMResponse
+    from agentguard.types import LLMResponse
 
 
 class Tracer:

@@ -1,4 +1,4 @@
-"""Top-down generation module — L1→L4 code generation."""
+"""Top-down generation module -- L1-L4 prompt rendering."""
 
 from agentguard.topdown.generator import TopDownGenerator
 from agentguard.topdown.levels import Level

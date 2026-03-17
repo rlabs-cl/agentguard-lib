@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
-import pytest
-
 from agentguard.challenge.challenger import (
     SelfChallenger,
     _parse_criteria_results,
@@ -13,7 +9,6 @@ from agentguard.challenge.challenger import (
 )
 from agentguard.challenge.grounding import GroundingChecker, GroundingReport
 from agentguard.challenge.types import ChallengeResult, CriterionResult
-from tests.conftest import MockLLMProvider
 
 # ------------------------------------------------------------------ #
 #  Challenge types
@@ -57,10 +52,6 @@ class TestChallengeTypes:
             grounding_violations=["Used fake_module"],
         )
         assert "grounding" in str(result).lower()
-
-    def test_challenge_result_cost_default(self):
-        result = ChallengeResult(passed=True)
-        assert result.cost.total_cost == Decimal("0")
 
 
 # ------------------------------------------------------------------ #
@@ -121,104 +112,38 @@ class TestResponseParsing:
 
 
 # ------------------------------------------------------------------ #
-#  SelfChallenger
+#  SelfChallenger — prompt rendering
 # ------------------------------------------------------------------ #
 
-@pytest.mark.asyncio
 class TestSelfChallenger:
-    async def test_challenge_passes_when_all_criteria_pass(self):
-        """When the LLM responds with all PASS, the challenge should pass."""
-        response = (
-            "CRITERION 1: PASS: Endpoints match\n"
-            "CRITERION 2: PASS: No secrets found\n"
-            "\n"
-            "GROUNDING:\n"
-            "- NONE\n"
-            "- NONE\n"
-        )
-        llm = MockLLMProvider(responses=[response])
-        challenger = SelfChallenger(llm=llm)
-
-        result = await challenger.challenge(
+    def test_render_challenge_prompt(self):
+        """SelfChallenger should render a structured challenge prompt."""
+        challenger = SelfChallenger()
+        messages = challenger.render_challenge_prompt(
             output="def hello(): pass",
             criteria=["Endpoints match spec", "No hardcoded secrets"],
-            auto_rework=False,
+            task_description="Implement auth module",
         )
-        assert result.passed is True
-        assert len(result.criteria_results) == 2
-        assert all(c.passed for c in result.criteria_results)
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert "Endpoints match spec" in messages[1]["content"]
+        assert "No hardcoded secrets" in messages[1]["content"]
 
-    async def test_challenge_fails_and_reworks(self):
-        """When criteria fail, challenger should attempt rework."""
-        fail_response = (
-            "CRITERION 1: FAIL: Missing endpoint\n"
-            "\n"
-            "GROUNDING:\n"
-            "- NONE\n"
-            "- NONE\n"
+    def test_build_feedback(self):
+        results = [
+            CriterionResult("C1", True, "OK"),
+            CriterionResult("C2", False, "Missing"),
+        ]
+        feedback = SelfChallenger.build_feedback(
+            results,
+            violations=["Used fake_mod"],
+            assumptions=["DB is Postgres"],
         )
-        rework_response = "def hello(): return 'fixed'"
-        pass_response = (
-            "CRITERION 1: PASS: Now correct\n"
-            "\n"
-            "GROUNDING:\n"
-            "- NONE\n"
-            "- NONE\n"
-        )
-        llm = MockLLMProvider(responses=[fail_response, rework_response, pass_response])
-        challenger = SelfChallenger(llm=llm)
-
-        result = await challenger.challenge(
-            output="def hello(): pass",
-            criteria=["Has correct endpoint"],
-            max_retries=3,
-            auto_rework=True,
-        )
-        assert result.passed is True
-        assert result.attempt == 2
-        assert llm.call_count == 3  # eval + rework + eval
-
-    async def test_challenge_with_grounding_violations(self):
-        response = (
-            "CRITERION 1: PASS: OK\n"
-            "\n"
-            "GROUNDING:\n"
-            "- VIOLATION: Used imaginary_api module\n"
-            "- NONE\n"
-        )
-        llm = MockLLMProvider(responses=[response])
-        challenger = SelfChallenger(llm=llm)
-
-        result = await challenger.evaluate_only(
-            output="import imaginary_api",
-            criteria=["Code is correct"],
-        )
-        assert result.passed is False  # Grounding violation causes failure
-        assert len(result.grounding_violations) == 1
-
-    async def test_rework_standalone(self):
-        llm = MockLLMProvider(responses=["def fixed(): return 42\n"])
-        challenger = SelfChallenger(llm=llm)
-
-        result = await challenger.rework(
-            output="def broken(): pass",
-            feedback="Function should return 42",
-        )
-        assert "fixed" in result
-
-    async def test_max_retries_exhausted(self):
-        """When all retries fail, return last result with passed=False."""
-        fail = "CRITERION 1: FAIL: Still wrong\nGROUNDING:\n- NONE\n- NONE\n"
-        rework = "def still_broken(): pass"
-        llm = MockLLMProvider(responses=[fail, rework, fail])
-        challenger = SelfChallenger(llm=llm)
-
-        result = await challenger.challenge(
-            output="def broken(): pass",
-            criteria=["Must work"],
-            max_retries=2,
-        )
-        assert result.passed is False
+        assert "FAILED CRITERIA" in feedback
+        assert "C2" in feedback
+        assert "GROUNDING VIOLATIONS" in feedback
+        assert "ASSUMPTIONS" in feedback
 
 
 # ------------------------------------------------------------------ #

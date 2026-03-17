@@ -7,7 +7,7 @@ from typing import Any
 
 import jinja2
 
-from agentguard.llm.types import Message
+from agentguard.types import Message
 
 
 @dataclass

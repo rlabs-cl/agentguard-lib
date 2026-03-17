@@ -12,7 +12,34 @@ from agentguard.context.recipe import (
 )
 from agentguard.context.summarizer import HierarchicalSummarizer
 from agentguard.context.window import TokenWindow
-from tests.conftest import MockLLMProvider
+from agentguard.types import CostEstimate, LLMResponse, Message, TokenUsage
+
+
+class _MockLLM:
+    """Minimal mock LLM for summarizer tests."""
+
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = list(responses)
+        self._calls: list[list[Message]] = []
+
+    async def generate(self, messages, config=None):  # noqa: ANN001
+        self._calls.append(messages)
+        content = self._responses.pop(0) if self._responses else "mock"
+        from decimal import Decimal
+        return LLMResponse(
+            content=content, model="mock", provider="mock",
+            tokens=TokenUsage(prompt_tokens=10, completion_tokens=5),
+            cost=CostEstimate(input_cost=Decimal("0"), output_cost=Decimal("0")),
+            latency_ms=1,
+        )
+
+    @property
+    def calls(self) -> list:
+        return self._calls
+
+    @property
+    def call_count(self) -> int:
+        return len(self._calls)
 
 # ------------------------------------------------------------------ #
 #  TokenWindow
@@ -261,7 +288,7 @@ class TestHierarchicalSummarizer:
 
     async def test_with_llm(self):
         """With an LLM, should call it for summarization."""
-        llm = MockLLMProvider(responses=["This is a summary of the content."])
+        llm = _MockLLM(responses=["This is a summary of the content."])
         summarizer = HierarchicalSummarizer(llm=llm)
         long_text = "A very long text " * 500
         result = await summarizer.summarize(long_text, target_tokens=50)
@@ -269,7 +296,7 @@ class TestHierarchicalSummarizer:
         assert llm.call_count == 1
 
     async def test_with_focus(self):
-        llm = MockLLMProvider(responses=["Auth summary"])
+        llm = _MockLLM(responses=["Auth summary"])
         summarizer = HierarchicalSummarizer(llm=llm)
         result = await summarizer.summarize(
             "Long text about auth and more",

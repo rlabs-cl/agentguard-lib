@@ -37,7 +37,6 @@ from agentguard.benchmark.types import (
 
 if TYPE_CHECKING:
     from agentguard.archetypes.base import Archetype
-    from agentguard.llm.base import LLMProvider
 
 _log = logging.getLogger(__name__)
 
@@ -139,7 +138,7 @@ class BenchmarkRunner:
         archetype: Archetype | str,
         config: BenchmarkConfig,
         *,
-        llm: LLMProvider | str | None = None,
+        llm: Any | str | None = None,
         signing_secret: str = "",
     ) -> None:
         """Initialise a benchmark runner.
@@ -156,7 +155,7 @@ class BenchmarkRunner:
             signing_secret: HMAC secret for report signing.
         """
         from agentguard.archetypes.registry import get_archetype_registry
-        from agentguard.llm.factory import create_llm_provider
+        from agentguard.benchmark._compat import create_llm_provider
 
         # Resolve archetype
         if isinstance(archetype, str):
@@ -188,7 +187,7 @@ class BenchmarkRunner:
 
         # Resolve LLM: direct provider > model string > config.model
         if isinstance(llm, str):
-            self._llm: LLMProvider = create_llm_provider(llm)
+            self._llm: Any = create_llm_provider(llm)
             # Store model label for the report
             if not config.model:
                 config.model = llm
@@ -292,7 +291,7 @@ class BenchmarkRunner:
 
     async def _run_control(self, spec: str) -> RunResult:
         """Generate code with a raw LLM call (no AgentGuard)."""
-        from agentguard.llm.types import Message
+        from agentguard.types import Message
 
         t0 = _time.perf_counter()
         try:
@@ -340,47 +339,22 @@ class BenchmarkRunner:
     # ══════════════════════════════════════════════════════════
 
     async def _run_treatment(self, spec: str) -> RunResult:
-        """Generate code through the full AgentGuard pipeline."""
-        from agentguard.pipeline import Pipeline
+        """Generate code through the AgentGuard pipeline.
 
+        Note: In v0.6.0 the internal Pipeline was removed. Treatment runs
+        now return an error result. Use the agent-native benchmark tools
+        (benchmark + benchmark_evaluate) instead.
+        """
         t0 = _time.perf_counter()
-        pipe = Pipeline(
-            archetype=self._archetype,
-            llm=self._llm,
-            report_usage=False,  # Don't report benchmark runs to platform
+        duration_ms = int((_time.perf_counter() - t0) * 1000)
+        _log.warning(
+            "Treatment run skipped: Pipeline class was removed in v0.6.0. "
+            "Use agent-native benchmark tools (benchmark + benchmark_evaluate) instead."
         )
-        try:
-            result = await pipe.generate(spec)
-            duration_ms = int((_time.perf_counter() - t0) * 1000)
-
-            files = result.files
-
-            # Evaluate using the resolved evaluator for this archetype type
-            enterprise, operational = await self._evaluator(
-                spec, files,
-                self._config.enterprise_threshold,
-                self._config.operational_threshold,
-                self._llm,
-            )
-
-            total_lines = sum(c.count("\n") + 1 for c in files.values())
-            cost = float(result.total_cost.total_cost)
-
-            return RunResult(
-                enterprise=enterprise,
-                operational=operational,
-                files_generated=len(files),
-                total_lines=total_lines,
-                total_tokens=0,  # Pipeline doesn't expose aggregate tokens directly
-                cost_usd=cost,
-                duration_ms=duration_ms,
-            )
-        except Exception as exc:
-            duration_ms = int((_time.perf_counter() - t0) * 1000)
-            _log.error("Treatment run failed: %s", exc)
-            return _error_result(str(exc), duration_ms)
-        finally:
-            await pipe.close()
+        return _error_result(
+            "Pipeline removed in v0.6.0 — use agent-native benchmark tools",
+            duration_ms,
+        )
 
     # ══════════════════════════════════════════════════════════
     #  Evaluator resolution

@@ -1,77 +1,57 @@
-"""L2 Contracts — generate typed stubs for each file."""
+"""L2 Contracts — render contract prompts for the calling agent."""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from agentguard.llm.types import GenerationConfig
 from agentguard.prompts.registry import get_prompt_registry
-from agentguard.topdown.types import ContractsResult, SkeletonResult
-from agentguard.tracing.trace import SpanType
 
 if TYPE_CHECKING:
     from agentguard.archetypes.base import Archetype
-    from agentguard.llm.base import LLMProvider
-    from agentguard.tracing.tracer import Tracer
+    from agentguard.topdown.types import SkeletonResult
 
 logger = logging.getLogger(__name__)
 
 
-async def generate_contracts(
+def render_contracts_prompt(
     spec: str,
     skeleton: SkeletonResult,
     archetype: Archetype,
-    llm: LLMProvider,
-    tracer: Tracer,
-) -> ContractsResult:
-    """L2: Generate typed function/class stubs for each file.
+) -> dict[str, list[Any]]:
+    """Render L2 contract prompts for each code file.
 
-    For each file in the skeleton, asks the LLM to create parseable code
-    with typed signatures and `raise NotImplementedError` bodies.
+    Returns a dict mapping file path to rendered messages for the calling
+    agent to use with its own LLM. Does not call any LLM itself.
 
     Args:
         spec: Natural language project specification.
         skeleton: L1 skeleton result.
         archetype: Project archetype.
-        llm: LLM provider.
-        tracer: Tracer for recording spans.
 
     Returns:
-        ContractsResult with code stubs for each file.
+        Dict of {file_path: messages} for each code file.
     """
     prompt_registry = get_prompt_registry()
     template = prompt_registry.get("contracts")
-    files: dict[str, str] = {}
+    prompts: dict[str, list[Any]] = {}
 
-    with tracer.span("L2_contracts", SpanType.LEVEL) as _level_span:
-        for entry in skeleton.files:
-            # Skip non-code files
-            if not _is_code_file(entry.path):
-                continue
+    for entry in skeleton.files:
+        if not _is_code_file(entry.path):
+            continue
 
-            messages = template.render(
-                language=archetype.tech_stack.language,
-                file_path=entry.path,
-                spec=spec,
-                file_purpose=entry.purpose,
-                skeleton_files=skeleton.files,
-                reference_patterns="",  # TODO: load from archetype
-            )
+        messages = template.render(
+            language=archetype.tech_stack.language,
+            file_path=entry.path,
+            spec=spec,
+            file_purpose=entry.purpose,
+            skeleton_files=skeleton.files,
+            reference_patterns="",
+        )
+        prompts[entry.path] = messages
 
-            with tracer.span(f"llm_contracts_{entry.path}", SpanType.LLM_CALL) as llm_span:
-                response = await llm.generate(
-                    messages,
-                    config=GenerationConfig(temperature=0.0, max_tokens=4096),
-                )
-                tracer.record_llm_response(llm_span, response)
-
-            code = _clean_code_response(response.content)
-            files[entry.path] = code
-            logger.info("L2 contracts: generated stubs for %s", entry.path)
-
-    logger.info("L2 contracts: %d code files generated", len(files))
-    return ContractsResult(files=files, skeleton=skeleton)
+    logger.info("L2 contracts: rendered prompts for %d code files", len(prompts))
+    return prompts
 
 
 def _is_code_file(path: str) -> bool:
