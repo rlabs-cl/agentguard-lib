@@ -8,7 +8,7 @@ version = "0.7.0"
 description = "A quality-assurance engine for LLM-generated code"
 readme = "README.MD"
 requires-python = ">=3.11"
-license = "MIT"
+license = {text = "MIT"}
 authors = [{ name = "AgentGuard Team" }]
 keywords = ["llm", "code-generation", "quality-assurance", "ai", "agents"]
 classifiers = [
@@ -49,6 +49,10 @@ agentguard-mcp = "agentguard.mcp.server:run_mcp_server"
 # --- Hatch Build ---
 [tool.hatch.build.targets.wheel]
 packages = ["agentguard"]
+
+[tool.hatch.metadata]
+# Disable license-file auto-detection (twine 6.x compat)
+allow-direct-references = true
 
 [project.urls]
 Homepage = "https://github.com/rlabs-cl/agentguard-lib"
