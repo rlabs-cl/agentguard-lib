@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlabs-agentguard"
-version = "0.6.1"
+version = "0.7.0"
 description = "A quality-assurance engine for LLM-generated code"
 readme = "README.MD"
 requires-python = ">=3.11"
@@ -32,6 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+platform = [
+    "cryptography>=42.0.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24.0",

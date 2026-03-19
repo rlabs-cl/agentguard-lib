@@ -35,6 +35,9 @@ class PlatformConfig:
     claim_token: str | None = None
     # UTC ISO-8601 string — used to detect stale claims without an HTTP round-trip.
     claim_expires_at: str | None = None
+    # ── Per-key encryption ───────────────────────────────────────
+    # Hex-encoded salt used to derive the per-key AES-256 key for archetype decryption.
+    encryption_salt: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -79,6 +82,8 @@ class PlatformConfig:
             d["claim_token"] = self.claim_token
         if self.claim_expires_at:
             d["claim_expires_at"] = self.claim_expires_at
+        if self.encryption_salt:
+            d["encryption_salt"] = self.encryption_salt
         if self.extra:
             d.update(self.extra)
         return d
@@ -89,7 +94,7 @@ class PlatformConfig:
         known_keys = {
             "api_key", "platform_url", "enabled",
             "batch_size", "flush_interval_seconds", "timeout_seconds",
-            "claim_token", "claim_expires_at",
+            "claim_token", "claim_expires_at", "encryption_salt",
         }
         extra = {k: v for k, v in data.items() if k not in known_keys}
         return cls(
@@ -101,6 +106,7 @@ class PlatformConfig:
             timeout_seconds=data.get("timeout_seconds", 10.0),
             claim_token=data.get("claim_token"),
             claim_expires_at=data.get("claim_expires_at"),
+            encryption_salt=data.get("encryption_salt"),
             extra=extra,
         )
 

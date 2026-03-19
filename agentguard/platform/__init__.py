@@ -2,12 +2,14 @@
 
 from agentguard.platform.client import PlatformClient
 from agentguard.platform.config import PlatformConfig, load_config, save_config
+from agentguard.platform.crypto import decrypt_for_key
 from agentguard.platform.license_cache import LicenseCache
 
 __all__ = [
     "LicenseCache",
     "PlatformClient",
     "PlatformConfig",
+    "decrypt_for_key",
     "load_config",
     "save_config",
 ]

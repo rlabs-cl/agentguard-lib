@@ -327,7 +327,27 @@ class PlatformClient:
         content_url = f"{base}/api/engine/archetypes/{slug}/content"
         content_resp = await client.get(content_url, params={"token": download_token})
         content_resp.raise_for_status()
-        return content_resp.json()  # type: ignore[no-any-return]
+
+        data = content_resp.json()
+
+        # Decrypt if the server returned encrypted content
+        if data.get("encrypted") and self._config.encryption_salt:
+            try:
+                from agentguard.platform.crypto import decrypt_for_key
+                key_prefix = (self._config.api_key or "")[:10]
+                plaintext = decrypt_for_key(
+                    {"ciphertext": data["yaml_content"], "nonce": data["nonce"]},
+                    self._config.encryption_salt,
+                    key_prefix,
+                )
+                data["yaml_content"] = plaintext
+                data.pop("encrypted", None)
+                data.pop("nonce", None)
+            except Exception:
+                logger.warning("Failed to decrypt archetype content for %s", slug)
+                raise
+
+        return data  # type: ignore[no-any-return]
 
     # ── License ──────────────────────────────────────────────────
 
