@@ -34,10 +34,6 @@ __all__ = [
     # Platform integration — lazy imports
     "PlatformClient",
     "PlatformConfig",
-    # Benchmark — lazy imports
-    "BenchmarkRunner",
-    "BenchmarkConfig",
-    "BenchmarkReport",
 ]
 
 
@@ -49,13 +45,4 @@ def __getattr__(name: str):  # type: ignore[no-untyped-def]
     if name == "PlatformConfig":
         from agentguard.platform.config import PlatformConfig
         return PlatformConfig
-    if name == "BenchmarkRunner":
-        from agentguard.benchmark.runner import BenchmarkRunner
-        return BenchmarkRunner
-    if name == "BenchmarkConfig":
-        from agentguard.benchmark.types import BenchmarkConfig
-        return BenchmarkConfig
-    if name == "BenchmarkReport":
-        from agentguard.benchmark.types import BenchmarkReport
-        return BenchmarkReport
     raise AttributeError(f"module 'agentguard' has no attribute {name!r}")

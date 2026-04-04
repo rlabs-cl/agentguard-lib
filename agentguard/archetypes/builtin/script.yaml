@@ -1,84 +1,86 @@
-id: "script"
-name: "Python Script"
-description: "Single-file or few-file Python script for automation, data processing, or utilities"
-version: "1.1.0"
-maturity: "prototype"
-
+id: script
+name: Python Script
+description: Single-file or few-file Python script for automation, data processing,
+  or utilities
+version: 1.1.0
+maturity: prototype
 tech_stack:
   defaults:
-    language: "python"
-    framework: "stdlib"
-    database: "none"
-    testing: "pytest"
-    linter: "ruff"
-    type_checker: "mypy"
+    language: python
+    framework: stdlib
+    database: none
+    testing: pytest
+    linter: ruff
+    type_checker: mypy
   overridable: true
-
 pipeline:
-  levels: ["skeleton", "contracts", "wiring", "logic"]
+  levels:
+  - skeleton
+  - contracts
+  - wiring
+  - logic
   enable_self_challenge: true
   enable_structural_validation: true
   max_self_challenge_retries: 2
-
 structure:
   expected_dirs: []
   expected_files:
-    - "main.py"
-    - "README.md"
-
+  - main.py
+  - README.md
 context_recipes:
   skeleton:
-    include: ["spec", "archetype_structure"]
+    include:
+    - spec
+    - archetype_structure
     max_tokens: 2000
   contracts:
-    include: ["spec", "skeleton"]
+    include:
+    - spec
+    - skeleton
     max_tokens: 4000
   wiring:
-    include: ["contracts", "skeleton"]
+    include:
+    - contracts
+    - skeleton
     max_tokens: 4000
   logic:
-    include: ["function_stub", "function_deps"]
+    include:
+    - function_stub
+    - function_deps
     max_tokens: 4000
-
 validation:
-  checks: ["syntax", "lint", "types", "imports"]
-  lint_rules: "ruff:default"
-  type_strictness: "basic"
-
+  checks:
+  - syntax
+  - lint
+  - types
+  - imports
+  lint_rules: ruff:default
+  type_strictness: basic
 self_challenge:
   criteria:
-    - "Script fulfills the described purpose"
-    - "No hardcoded file paths or credentials"
-    - "All referenced imports are standard library or clearly listed"
-    - "Error handling for I/O operations"
-    - "No invented function calls or APIs"
+  - Script fulfills the described purpose
+  - No hardcoded file paths or credentials
+  - All referenced imports are standard library or clearly listed
+  - Error handling for I/O operations
+  - No invented function calls or APIs
   grounding_check: true
   assumptions_must_declare: true
-
 reference_patterns:
-  - "argparse_pattern"
-  - "pathlib_pattern"
-  - "logging_pattern"
-
-target_output: "Single-file Python script for automation, data processing, or utilities"
-
+- argparse_pattern
+- pathlib_pattern
+- logging_pattern
+target_output: Single-file Python script for automation, data processing, or utilities
 scoring_weights:
-  # Enterprise — reduced expectations for scripts
   type_safety: 0.5
   modularity: 0.5
   maintainability: 0.5
-  accessibility: 0.0   # N/A
+  accessibility: 0.0
   performance: 0.5
-  observability: 0.0   # N/A — scripts use print/logging but no telemetry
+  observability: 0.0
   testability: 0.5
-  # Operational
   debuggability: 1.0
   feature_extensibility: 0.3
-  cloud_scalability: 0.0   # N/A
-  api_migration_cost: 0.0  # N/A
+  cloud_scalability: 0.0
+  api_migration_cost: 0.0
   test_surface: 0.5
   team_onboarding: 0.5
-
-benchmark:
-  profile: "code"
-  improvement_threshold: 0.05

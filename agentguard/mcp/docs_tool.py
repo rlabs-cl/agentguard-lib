@@ -68,7 +68,7 @@ agentguard mcp --transport sse --port 8421
 
 | Variable              | Purpose                                    |
 |-----------------------|--------------------------------------------|
-| `AGENTGUARD_API_KEY`  | Platform features (benchmark upload, etc.) |
+| `AGENTGUARD_API_KEY`  | Platform features                          |
 | `OPENAI_API_KEY`      | Only needed for `generate`/`challenge`     |
 | `ANTHROPIC_API_KEY`   | Alternative LLM backend                    |
 
@@ -361,45 +361,6 @@ Returns a structured validation prompt with:
 You (the agent) review the files and return the scored results.
 """,
 
-    "benchmark": """\
-# Benchmarking
-
-Benchmarking measures how much AgentGuard improves code quality
-compared to unguided generation.
-
-### Step 1 — Get benchmark specs
-```
-benchmark(archetype="api_backend", category=None)
-```
-Returns 5 specs at different complexity levels (1-5).
-
-### Step 2 — Generate code both ways
-For each spec:
-1. **Control** — generate code WITHOUT AgentGuard tools.
-2. **Treatment** — generate code WITH the full AgentGuard pipeline.
-
-### Step 3 — Evaluate
-```
-benchmark_evaluate(
-    archetype="api_backend",
-    results_json=[...],        # array of {complexity, spec, control_files, treatment_files}
-    archetype_yaml="...",      # optional: raw YAML for validation + fitness weights
-    environment="cursor",      # your IDE/tool
-)
-```
-
-### Scoring dimensions
-- Enterprise readiness (code quality, security, patterns)
-- Operational readiness (logging, config, error handling)
-- Each dimension scored per file, aggregated per complexity level.
-
-### Output
-Full report with per-dimension scores, overall verdict, and metadata
-(agentguard version, python version, platform, token usage delta).
-If `archetype_yaml` is provided and `AGENTGUARD_API_KEY` is set,
-the report is auto-uploaded to the platform.
-""",
-
     "marketplace": """\
 # Marketplace — Community Archetypes
 
@@ -437,7 +398,7 @@ user-installed).  Use `get_archetype(name)` for full details.
 
 | Variable               | Required | Purpose                                   |
 |------------------------|----------|-------------------------------------------|
-| `AGENTGUARD_API_KEY`   | No       | Platform features, benchmark upload        |
+| `AGENTGUARD_API_KEY`   | No       | Platform features                          |
 | `OPENAI_API_KEY`       | No       | Only for `generate`/`challenge` tools      |
 | `ANTHROPIC_API_KEY`    | No       | Alternative LLM backend for pipeline tools |
 
@@ -655,7 +616,6 @@ _TOPIC_ORDER = [
     "logic",
     "challenge",
     "validation",
-    "benchmark",
     "marketplace",
     "configuration",
     "archetype_yaml_schema",

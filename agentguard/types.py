@@ -1,8 +1,7 @@
 """Shared lightweight types (v0.6.0).
 
 These were originally in agentguard.llm.types. With LLM providers removed,
-the types that are still needed by tracing, prompts, and benchmark modules
-live here.
+the types that are still needed by tracing and prompts live here.
 """
 
 from __future__ import annotations

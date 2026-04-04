@@ -13,7 +13,6 @@ Flush triggers (whichever fires first):
 
 - **Inactivity**: no new event for ≥ 30 s   → flush
 - **Periodic**:   every 5 min               → flush
-- **Terminal**:   ``benchmark_evaluate``    → force flush immediately
 - **Process exit**: ``atexit``              → best-effort sync flush
 """
 
@@ -138,7 +137,7 @@ class MCPUsageTracker:
         self._reset_inactivity_timer()
 
     def force_flush(self) -> None:
-        """Flush immediately — call after terminal events like ``benchmark_evaluate``."""
+        """Flush immediately."""
         self._cancel_inactivity_timer()
         self._flush_sync()
 
