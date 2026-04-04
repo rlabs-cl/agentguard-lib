@@ -13,7 +13,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 # Default platform URL (staging for now, production later)
-DEFAULT_PLATFORM_URL = "https://agentguard-api-staging-zsyap4psrq-tl.a.run.app"
+DEFAULT_PLATFORM_URL = "https://api.agentguard.rlabs.cl"
 
 # Config directory and file
 CONFIG_DIR = Path.home() / ".agentguard"
