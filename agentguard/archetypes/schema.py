@@ -23,6 +23,19 @@ class Maturity(StrEnum):
     enterprise = "enterprise"
 
 
+class OutputKind(StrEnum):
+    """What kind of artifact this archetype produces.
+
+    - code:    Executable software (APIs, CLIs, libraries, scripts, etc.)
+    - content: Structured documents, configs, specifications, manuals
+    - hybrid:  Mixed — code with significant documentation, or documented configs
+    """
+
+    code = "code"
+    content = "content"
+    hybrid = "hybrid"
+
+
 class TrustLevel(StrEnum):
     """How much the platform trusts this archetype."""
 
@@ -31,9 +44,18 @@ class TrustLevel(StrEnum):
     community = "community"  # User-published, passed schema only
 
 
-VALID_LANGUAGES = frozenset({
+# Programming languages — for executable code generation
+VALID_TECH_LANGUAGES = frozenset({
     "python", "typescript", "javascript", "go", "rust", "java", "csharp", "ruby",
 })
+
+# Content and markup languages — for structured artifacts (docs, configs, etc.)
+VALID_CONTENT_LANGUAGES = frozenset({
+    "markdown", "latex", "yaml", "json", "toml", "xml", "html", "css", "sql",
+})
+
+# Combined set: AgentGuard archetypes can produce any structured artifact
+VALID_LANGUAGES = VALID_TECH_LANGUAGES | VALID_CONTENT_LANGUAGES
 
 VALID_FRAMEWORKS = frozenset({
     "fastapi", "flask", "django", "express", "nextjs", "react", "vue", "svelte",
@@ -64,10 +86,21 @@ VALID_CHECKS = frozenset({
     "syntax", "lint", "types", "imports", "structure",
 })
 
-VALID_CATEGORIES = frozenset({
-    "general", "backend", "frontend", "cli", "library", "script", "fullstack",
+# ── Categories ────────────────────────────────────────────────────
+# Code-oriented categories (original)
+VALID_CODE_CATEGORIES = frozenset({
+    "backend", "frontend", "cli", "library", "script", "fullstack",
     "data", "ml", "devops", "mobile", "infra",
 })
+
+# Content-oriented categories (new — for non-code archetypes)
+VALID_CONTENT_CATEGORIES = frozenset({
+    "documentation", "config", "design", "report", "tutorial",
+    "specification", "template",
+})
+
+# Combined: any archetype can use any category
+VALID_CATEGORIES = frozenset({"general"}) | VALID_CODE_CATEGORIES | VALID_CONTENT_CATEGORIES
 
 VALID_DIMENSIONS = frozenset({
     # Enterprise readiness
@@ -239,6 +272,8 @@ class ArchetypeSchema(BaseModel):
     description: str = Field(default="", max_length=2000)
     version: str = Field(default="1.0.0", max_length=32)
     maturity: Maturity = Maturity.production
+    output_kind: OutputKind = OutputKind.code
+    category: str = Field(default="general", max_length=64)
 
     tech_stack: TechStackSchema = Field(default_factory=TechStackSchema)
     pipeline: PipelineSchema = Field(default_factory=PipelineSchema)
@@ -268,6 +303,15 @@ class ArchetypeSchema(BaseModel):
         if invalid_range:
             raise ValueError(
                 f"scoring_weights values must be 0.0–1.0. Out of range: {invalid_range}"
+            )
+        return v
+
+    @field_validator("category")
+    @classmethod
+    def _valid_category(cls, v: str) -> str:
+        if v not in VALID_CATEGORIES:
+            raise ValueError(
+                f"Invalid category '{v}'. Must be one of: {sorted(VALID_CATEGORIES)}"
             )
         return v
 
@@ -311,6 +355,8 @@ class ArchetypeSchema(BaseModel):
 
     @model_validator(mode="after")
     def _cross_field_checks(self) -> ArchetypeSchema:
+        import warnings
+
         # If pipeline has self-challenge enabled, criteria should exist
         if self.pipeline.enable_self_challenge and not self.self_challenge.criteria:
             # Warn but don't fail — built-ins with challenge enabled but
@@ -325,6 +371,33 @@ class ArchetypeSchema(BaseModel):
                 f"Context recipes reference unknown pipeline levels: {unknown}. "
                 f"Pipeline levels are: {sorted(known)}"
             )
+
+        # output_kind ↔ language coherence (soft check — warn, don't fail)
+        lang = self.tech_stack.language
+        if self.output_kind == OutputKind.content and lang in VALID_TECH_LANGUAGES:
+            warnings.warn(
+                f"Archetype '{self.id}' has output_kind='content' but language='{lang}' "
+                f"(a tech language). Consider using a content language or output_kind='hybrid'.",
+                stacklevel=2,
+            )
+        elif self.output_kind == OutputKind.code and lang in VALID_CONTENT_LANGUAGES:
+            warnings.warn(
+                f"Archetype '{self.id}' has output_kind='code' but language='{lang}' "
+                f"(a content language). Consider output_kind='content' or 'hybrid'.",
+                stacklevel=2,
+            )
+
+        # output_kind ↔ category coherence (soft check)
+        if (
+            self.output_kind == OutputKind.content
+            and self.category in VALID_CODE_CATEGORIES
+        ):
+            warnings.warn(
+                f"Archetype '{self.id}' has output_kind='content' but category='{self.category}' "
+                f"(a code category). Consider a content category: {sorted(VALID_CONTENT_CATEGORIES)}.",
+                stacklevel=2,
+            )
+
         return self
 
 
@@ -363,7 +436,7 @@ def _validate_archetype_dict(data: dict[str, Any]) -> ArchetypeSchema:
     normalized: dict[str, Any] = {}
 
     # Top-level scalars
-    for key in ("id", "name", "description", "version", "maturity"):
+    for key in ("id", "name", "description", "version", "maturity", "output_kind", "category"):
         if key in data:
             normalized[key] = data[key]
 
