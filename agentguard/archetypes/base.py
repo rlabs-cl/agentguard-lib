@@ -124,6 +124,8 @@ class Archetype:
     description: str = ""
     version: str = "1.0.0"
     maturity: str = "production"  # prototype | production | enterprise
+    output_kind: str = "code"  # code | content | hybrid
+    category: str = "general"  # marketplace category
 
     tech_stack: TechStack = field(default_factory=TechStack)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
@@ -258,6 +260,8 @@ def _from_dict(data: dict[str, Any]) -> Archetype:
         description=data.get("description", ""),
         version=data.get("version", "1.0.0"),
         maturity=data.get("maturity", "production"),
+        output_kind=data.get("output_kind", "code"),
+        category=data.get("category", "general"),
         tech_stack=tech,
         pipeline=pipeline,
         structure=data.get("structure", {}),

@@ -23,6 +23,19 @@ class Maturity(StrEnum):
     enterprise = "enterprise"
 
 
+class OutputKind(StrEnum):
+    """What kind of artifact this archetype produces.
+
+    - code:    Executable software (APIs, CLIs, libraries, scripts, etc.)
+    - content: Structured documents, configs, specifications, manuals
+    - hybrid:  Mixed — code with significant documentation, or documented configs
+    """
+
+    code = "code"
+    content = "content"
+    hybrid = "hybrid"
+
+
 class TrustLevel(StrEnum):
     """How much the platform trusts this archetype."""
 
@@ -31,30 +44,123 @@ class TrustLevel(StrEnum):
     community = "community"  # User-published, passed schema only
 
 
-VALID_LANGUAGES = frozenset({
+# Programming languages — for executable code generation
+VALID_TECH_LANGUAGES = frozenset({
     "python", "typescript", "javascript", "go", "rust", "java", "csharp", "ruby",
 })
 
-VALID_FRAMEWORKS = frozenset({
-    "fastapi", "flask", "django", "express", "nextjs", "react", "vue", "svelte",
-    "gin", "actix", "spring", "rails", "click", "typer", "none", "stdlib",
+# Content and markup languages — for structured artifacts (docs, configs, etc.)
+VALID_CONTENT_LANGUAGES = frozenset({
+    "markdown", "latex", "yaml", "json", "toml", "xml", "html", "css", "sql",
 })
 
-VALID_DATABASES = frozenset({
-    "postgresql", "mysql", "sqlite", "mongodb", "redis", "dynamodb", "none",
-})
+# Combined set: AgentGuard archetypes can produce any structured artifact
+VALID_LANGUAGES = VALID_TECH_LANGUAGES | VALID_CONTENT_LANGUAGES
 
-VALID_TESTERS = frozenset({
-    "pytest", "jest", "vitest", "mocha", "go_test", "cargo_test", "junit", "rspec", "unittest",
-})
+# ── Ecosystem compatibility maps ─────────────────────────────────
+# Instead of strict whitelists, we map KNOWN tools to their language
+# ecosystems. Unknown tools are allowed (creative freedom), but known
+# tools used with the wrong language trigger a consistency error.
+#
+# Values like "none" and "stdlib" always pass (universal).
 
-VALID_LINTERS = frozenset({
-    "ruff", "eslint", "biome", "golangci-lint", "clippy", "checkstyle", "rubocop", "none",
-})
+_UNIVERSAL = frozenset({"none", "stdlib"})
 
-VALID_TYPE_CHECKERS = frozenset({
-    "mypy", "pyright", "tsc", "none",
-})
+FRAMEWORK_ECOSYSTEMS: dict[str, frozenset[str]] = {
+    # Python
+    "fastapi": frozenset({"python"}),
+    "flask": frozenset({"python"}),
+    "django": frozenset({"python"}),
+    "click": frozenset({"python"}),
+    "typer": frozenset({"python"}),
+    "prefect": frozenset({"python"}),
+    "aiokafka": frozenset({"python"}),
+    "strawberry": frozenset({"python"}),
+    "grpcio": frozenset({"python"}),
+    "fastmcp": frozenset({"python"}),
+    "langgraph": frozenset({"python"}),
+    "celery": frozenset({"python"}),
+    "scrapy": frozenset({"python"}),
+    # JavaScript / TypeScript
+    "express": frozenset({"javascript", "typescript"}),
+    "nextjs": frozenset({"javascript", "typescript"}),
+    "react": frozenset({"javascript", "typescript"}),
+    "vue": frozenset({"javascript", "typescript"}),
+    "svelte": frozenset({"javascript", "typescript"}),
+    "nestjs": frozenset({"typescript"}),
+    "hono": frozenset({"javascript", "typescript"}),
+    # Go
+    "gin": frozenset({"go"}),
+    "echo": frozenset({"go"}),
+    "fiber": frozenset({"go"}),
+    # Rust
+    "actix": frozenset({"rust"}),
+    "axum": frozenset({"rust"}),
+    "rocket": frozenset({"rust"}),
+    # Java
+    "spring": frozenset({"java"}),
+    "quarkus": frozenset({"java"}),
+    # Ruby
+    "rails": frozenset({"ruby"}),
+    "sinatra": frozenset({"ruby"}),
+    # C#
+    "aspnet": frozenset({"csharp"}),
+    "blazor": frozenset({"csharp"}),
+}
+
+TESTER_ECOSYSTEMS: dict[str, frozenset[str]] = {
+    "pytest": frozenset({"python"}),
+    "unittest": frozenset({"python"}),
+    "jest": frozenset({"javascript", "typescript"}),
+    "vitest": frozenset({"javascript", "typescript"}),
+    "mocha": frozenset({"javascript", "typescript"}),
+    "go_test": frozenset({"go"}),
+    "cargo_test": frozenset({"rust"}),
+    "junit": frozenset({"java"}),
+    "rspec": frozenset({"ruby"}),
+}
+
+LINTER_ECOSYSTEMS: dict[str, frozenset[str]] = {
+    "ruff": frozenset({"python"}),
+    "pylint": frozenset({"python"}),
+    "flake8": frozenset({"python"}),
+    "eslint": frozenset({"javascript", "typescript"}),
+    "biome": frozenset({"javascript", "typescript"}),
+    "golangci-lint": frozenset({"go"}),
+    "clippy": frozenset({"rust"}),
+    "checkstyle": frozenset({"java"}),
+    "rubocop": frozenset({"ruby"}),
+    # Infrastructure / spec linters (language-agnostic, work on config files)
+    "tflint": frozenset({"yaml", "python", "typescript", "go"}),
+    "spectral": frozenset({"yaml", "json", "python", "typescript"}),
+}
+
+TYPE_CHECKER_ECOSYSTEMS: dict[str, frozenset[str]] = {
+    "mypy": frozenset({"python"}),
+    "pyright": frozenset({"python"}),
+    "tsc": frozenset({"typescript"}),
+}
+
+
+def _check_ecosystem_consistency(
+    tool_name: str,
+    tool_value: str,
+    language: str,
+    ecosystem_map: dict[str, frozenset[str]],
+) -> str | None:
+    """Return an error message if there's a known ecosystem incompatibility, else None."""
+    if tool_value in _UNIVERSAL:
+        return None
+    if tool_value not in ecosystem_map:
+        # Unknown tool — allow it (creative freedom)
+        return None
+    compatible_langs = ecosystem_map[tool_value]
+    if language not in compatible_langs:
+        return (
+            f"Ecosystem inconsistency: {tool_name}='{tool_value}' is not compatible "
+            f"with language='{language}'. '{tool_value}' works with: {sorted(compatible_langs)}"
+        )
+    return None
 
 VALID_PIPELINE_LEVELS = frozenset({
     "skeleton", "contracts", "wiring", "logic",
@@ -64,10 +170,21 @@ VALID_CHECKS = frozenset({
     "syntax", "lint", "types", "imports", "structure",
 })
 
-VALID_CATEGORIES = frozenset({
-    "general", "backend", "frontend", "cli", "library", "script", "fullstack",
+# ── Categories ────────────────────────────────────────────────────
+# Code-oriented categories (original)
+VALID_CODE_CATEGORIES = frozenset({
+    "backend", "frontend", "cli", "library", "script", "fullstack",
     "data", "ml", "devops", "mobile", "infra",
 })
+
+# Content-oriented categories (new — for non-code archetypes)
+VALID_CONTENT_CATEGORIES = frozenset({
+    "documentation", "config", "design", "report", "tutorial",
+    "specification", "template",
+})
+
+# Combined: any archetype can use any category
+VALID_CATEGORIES = frozenset({"general"}) | VALID_CODE_CATEGORIES | VALID_CONTENT_CATEGORIES
 
 VALID_DIMENSIONS = frozenset({
     # Enterprise readiness
@@ -83,7 +200,12 @@ VALID_DIMENSIONS = frozenset({
 
 
 class TechStackSchema(BaseModel):
-    """Tech stack with constrained choices."""
+    """Tech stack with ecosystem-consistency validation.
+
+    Instead of strict whitelists, validates that tools are consistent
+    with the declared language ecosystem. Unknown tools are allowed
+    (creative freedom); known cross-ecosystem mismatches are rejected.
+    """
 
     language: str = "python"
     framework: str = "fastapi"
@@ -99,40 +221,35 @@ class TechStackSchema(BaseModel):
             raise ValueError(f"Invalid language '{v}'. Must be one of: {sorted(VALID_LANGUAGES)}")
         return v
 
-    @field_validator("framework")
-    @classmethod
-    def _valid_framework(cls, v: str) -> str:
-        if v not in VALID_FRAMEWORKS:
-            raise ValueError(f"Invalid framework '{v}'. Must be one of: {sorted(VALID_FRAMEWORKS)}")
-        return v
+    @model_validator(mode="after")
+    def _check_ecosystem_consistency(self) -> TechStackSchema:
+        """Validate that framework, tester, linter, and type_checker
+        are consistent with the declared language."""
+        lang = self.language
+        errors: list[str] = []
 
-    @field_validator("database")
-    @classmethod
-    def _valid_database(cls, v: str) -> str:
-        if v not in VALID_DATABASES:
-            raise ValueError(f"Invalid database '{v}'. Must be one of: {sorted(VALID_DATABASES)}")
-        return v
+        err = _check_ecosystem_consistency("framework", self.framework, lang, FRAMEWORK_ECOSYSTEMS)
+        if err:
+            errors.append(err)
 
-    @field_validator("testing")
-    @classmethod
-    def _valid_testing(cls, v: str) -> str:
-        if v not in VALID_TESTERS:
-            raise ValueError(f"Invalid test framework '{v}'. Must be one of: {sorted(VALID_TESTERS)}")
-        return v
+        err = _check_ecosystem_consistency("testing", self.testing, lang, TESTER_ECOSYSTEMS)
+        if err:
+            errors.append(err)
 
-    @field_validator("linter")
-    @classmethod
-    def _valid_linter(cls, v: str) -> str:
-        if v not in VALID_LINTERS:
-            raise ValueError(f"Invalid linter '{v}'. Must be one of: {sorted(VALID_LINTERS)}")
-        return v
+        err = _check_ecosystem_consistency("linter", self.linter, lang, LINTER_ECOSYSTEMS)
+        if err:
+            errors.append(err)
 
-    @field_validator("type_checker")
-    @classmethod
-    def _valid_type_checker(cls, v: str) -> str:
-        if v not in VALID_TYPE_CHECKERS:
-            raise ValueError(f"Invalid type checker '{v}'. Must be one of: {sorted(VALID_TYPE_CHECKERS)}")
-        return v
+        err = _check_ecosystem_consistency("type_checker", self.type_checker, lang, TYPE_CHECKER_ECOSYSTEMS)
+        if err:
+            errors.append(err)
+
+        if errors:
+            raise ValueError(
+                f"Tech stack ecosystem inconsistencies:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
+
+        return self
 
 
 class PipelineSchema(BaseModel):
@@ -239,6 +356,8 @@ class ArchetypeSchema(BaseModel):
     description: str = Field(default="", max_length=2000)
     version: str = Field(default="1.0.0", max_length=32)
     maturity: Maturity = Maturity.production
+    output_kind: OutputKind = OutputKind.code
+    category: str = Field(default="general", max_length=64)
 
     tech_stack: TechStackSchema = Field(default_factory=TechStackSchema)
     pipeline: PipelineSchema = Field(default_factory=PipelineSchema)
@@ -268,6 +387,15 @@ class ArchetypeSchema(BaseModel):
         if invalid_range:
             raise ValueError(
                 f"scoring_weights values must be 0.0–1.0. Out of range: {invalid_range}"
+            )
+        return v
+
+    @field_validator("category")
+    @classmethod
+    def _valid_category(cls, v: str) -> str:
+        if v not in VALID_CATEGORIES:
+            raise ValueError(
+                f"Invalid category '{v}'. Must be one of: {sorted(VALID_CATEGORIES)}"
             )
         return v
 
@@ -311,6 +439,8 @@ class ArchetypeSchema(BaseModel):
 
     @model_validator(mode="after")
     def _cross_field_checks(self) -> ArchetypeSchema:
+        import warnings
+
         # If pipeline has self-challenge enabled, criteria should exist
         if self.pipeline.enable_self_challenge and not self.self_challenge.criteria:
             # Warn but don't fail — built-ins with challenge enabled but
@@ -325,6 +455,33 @@ class ArchetypeSchema(BaseModel):
                 f"Context recipes reference unknown pipeline levels: {unknown}. "
                 f"Pipeline levels are: {sorted(known)}"
             )
+
+        # output_kind ↔ language coherence (soft check — warn, don't fail)
+        lang = self.tech_stack.language
+        if self.output_kind == OutputKind.content and lang in VALID_TECH_LANGUAGES:
+            warnings.warn(
+                f"Archetype '{self.id}' has output_kind='content' but language='{lang}' "
+                f"(a tech language). Consider using a content language or output_kind='hybrid'.",
+                stacklevel=2,
+            )
+        elif self.output_kind == OutputKind.code and lang in VALID_CONTENT_LANGUAGES:
+            warnings.warn(
+                f"Archetype '{self.id}' has output_kind='code' but language='{lang}' "
+                f"(a content language). Consider output_kind='content' or 'hybrid'.",
+                stacklevel=2,
+            )
+
+        # output_kind ↔ category coherence (soft check)
+        if (
+            self.output_kind == OutputKind.content
+            and self.category in VALID_CODE_CATEGORIES
+        ):
+            warnings.warn(
+                f"Archetype '{self.id}' has output_kind='content' but category='{self.category}' "
+                f"(a code category). Consider a content category: {sorted(VALID_CONTENT_CATEGORIES)}.",
+                stacklevel=2,
+            )
+
         return self
 
 
@@ -363,7 +520,7 @@ def _validate_archetype_dict(data: dict[str, Any]) -> ArchetypeSchema:
     normalized: dict[str, Any] = {}
 
     # Top-level scalars
-    for key in ("id", "name", "description", "version", "maturity"):
+    for key in ("id", "name", "description", "version", "maturity", "output_kind", "category"):
         if key in data:
             normalized[key] = data[key]
 
