@@ -157,34 +157,80 @@ class TestArchetypeSchema:
     # ── Tech stack validation ──
 
     def test_invalid_language(self):
+        """Languages are still validated against VALID_LANGUAGES (finite set of targets)."""
         bad = MINIMAL_YAML.replace('language: "python"', 'language: "cobol"')
         with pytest.raises(ValidationError, match="Invalid language"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_framework(self):
-        bad = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "turbo_framework"')
-        with pytest.raises(ValidationError, match="Invalid framework"):
+    def test_unknown_framework_allowed(self):
+        """Unknown frameworks pass — creative freedom."""
+        good = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "turbo_framework"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.framework == "turbo_framework"
+
+    def test_cross_ecosystem_framework_rejected(self):
+        """Known framework from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "express"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_database(self):
-        bad = MINIMAL_YAML.replace('database: "none"', 'database: "oracle"')
-        with pytest.raises(ValidationError, match="Invalid database"):
+    def test_unknown_database_allowed(self):
+        """Unknown databases pass — no whitelist restriction."""
+        good = MINIMAL_YAML.replace('database: "none"', 'database: "oracle"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.database == "oracle"
+
+    def test_unknown_tester_allowed(self):
+        """Unknown testers pass — creative freedom."""
+        good = MINIMAL_YAML.replace('testing: "pytest"', 'testing: "tape"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.testing == "tape"
+
+    def test_cross_ecosystem_tester_rejected(self):
+        """Known tester from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('testing: "pytest"', 'testing: "jest"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_tester(self):
-        bad = MINIMAL_YAML.replace('testing: "pytest"', 'testing: "tape"')
-        with pytest.raises(ValidationError, match="Invalid test framework"):
+    def test_unknown_linter_allowed(self):
+        """Unknown linters pass — creative freedom."""
+        good = MINIMAL_YAML.replace('linter: "ruff"', 'linter: "superlint"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.linter == "superlint"
+
+    def test_cross_ecosystem_linter_rejected(self):
+        """Known linter from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('linter: "ruff"', 'linter: "eslint"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_linter(self):
-        bad = MINIMAL_YAML.replace('linter: "ruff"', 'linter: "superlint"')
-        with pytest.raises(ValidationError, match="Invalid linter"):
+    def test_unknown_type_checker_allowed(self):
+        """Unknown type checkers pass — creative freedom."""
+        good = MINIMAL_YAML.replace('type_checker: "mypy"', 'type_checker: "sorbet"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.type_checker == "sorbet"
+
+    def test_cross_ecosystem_type_checker_rejected(self):
+        """Known type checker from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('type_checker: "mypy"', 'type_checker: "tsc"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_type_checker(self):
-        bad = MINIMAL_YAML.replace('type_checker: "mypy"', 'type_checker: "sorbet"')
-        with pytest.raises(ValidationError, match="Invalid type checker"):
-            validate_archetype_yaml(bad)
+    def test_none_always_passes(self):
+        """'none' is a universal value that passes for any language."""
+        good = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "none"')
+        good = good.replace('testing: "pytest"', 'testing: "none"')
+        good = good.replace('linter: "ruff"', 'linter: "none"')
+        good = good.replace('type_checker: "mypy"', 'type_checker: "none"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.framework == "none"
+
+    def test_real_frameworks_pass(self):
+        """Real frameworks like prefect, strawberry, langgraph should pass with python."""
+        for fw in ("prefect", "strawberry", "langgraph", "aiokafka", "grpcio", "fastmcp"):
+            good = MINIMAL_YAML.replace('framework: "fastapi"', f'framework: "{fw}"')
+            schema = validate_archetype_yaml(good)
+            assert schema.tech_stack.framework == fw
 
     # ── Pipeline validation ──
 
