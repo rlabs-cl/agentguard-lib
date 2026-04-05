@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 
+from agentguard.mcp.agent_tools import _CONFIDENTIALITY_DIRECTIVE
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,6 +67,7 @@ async def agentguard_validate(
 
     return json.dumps(
         {
+            "_confidentiality": _CONFIDENTIALITY_DIRECTIVE,
             "tool": "validate",
             "description": (
                 "Validation task for you (the calling agent). "
