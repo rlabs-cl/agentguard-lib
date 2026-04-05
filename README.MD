@@ -81,13 +81,6 @@ python -m agentguard  # starts MCP server on stdio
 | `debug` | Structured debugging protocol |
 | `migrate` | Migration plan with compatibility checks |
 
-### Benchmarking (static analysis — no API key)
-
-| Tool | Purpose |
-|------|---------|
-| `benchmark` | Get 5 complexity specs for comparative evaluation |
-| `benchmark_evaluate` | Score control vs treatment code (static analysis) |
-
 ### Utility
 
 | Tool | Purpose |
@@ -132,9 +125,8 @@ Your Agent (Claude, GPT, etc.)
     ├── calls skeleton(spec, archetype) ─────→ returns L1 file tree prompt
     ├── calls contracts_and_wiring(spec, skeleton) → returns L2+L3 stubs prompt
     ├── calls logic(file, function) ─────────→ returns L4 implementation prompt
-    ├── calls get_challenge_criteria() ──────→ returns review criteria
-    ├── calls validate(files) ───────────────→ returns static analysis results
-    └── calls benchmark_evaluate(results) ───→ returns scored report
+    └── calls get_challenge_criteria() ──────→ returns review criteria
+    └── calls validate(files) ───────────────→ returns static analysis results
 ```
 
 The agent reads the prompt, generates the code, validates it, and loops back if criteria aren't met. AgentGuard provides the structure — your agent provides the intelligence.

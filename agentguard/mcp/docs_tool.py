@@ -519,10 +519,6 @@ migration_config:
   incompatibility_signals: [...]
   step_order: [...]
 
-# ── Scoring weights (optional, for benchmark fitness) ────────
-scoring_weights:
-  enterprise: 0.6
-  operational: 0.4
 ```
 """,
     "usage_stats": """\
