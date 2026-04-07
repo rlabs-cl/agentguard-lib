@@ -10,6 +10,7 @@ from agentguard.archetypes.registry import (
 )
 from agentguard.archetypes.schema import (
     ArchetypeSchema,
+    OutputKind,
     TrustLevel,
     compute_content_hash,
     validate_archetype_yaml,
@@ -21,6 +22,7 @@ __all__ = [
     "ArchetypeRegistry",
     "ArchetypeSchema",
     "IntegrityError",
+    "OutputKind",
     "RegistryEntry",
     "TrustLevel",
     "compute_content_hash",

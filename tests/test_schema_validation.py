@@ -18,7 +18,13 @@ from agentguard.archetypes.registry import (
 )
 from agentguard.archetypes.schema import (
     Maturity,
+    OutputKind,
     TrustLevel,
+    VALID_CATEGORIES,
+    VALID_CODE_CATEGORIES,
+    VALID_CONTENT_CATEGORIES,
+    VALID_CONTENT_LANGUAGES,
+    VALID_TECH_LANGUAGES,
     compute_content_hash,
     validate_archetype_yaml,
     verify_content_hash,
@@ -151,34 +157,80 @@ class TestArchetypeSchema:
     # ── Tech stack validation ──
 
     def test_invalid_language(self):
+        """Languages are still validated against VALID_LANGUAGES (finite set of targets)."""
         bad = MINIMAL_YAML.replace('language: "python"', 'language: "cobol"')
         with pytest.raises(ValidationError, match="Invalid language"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_framework(self):
-        bad = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "turbo_framework"')
-        with pytest.raises(ValidationError, match="Invalid framework"):
+    def test_unknown_framework_allowed(self):
+        """Unknown frameworks pass — creative freedom."""
+        good = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "turbo_framework"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.framework == "turbo_framework"
+
+    def test_cross_ecosystem_framework_rejected(self):
+        """Known framework from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "express"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_database(self):
-        bad = MINIMAL_YAML.replace('database: "none"', 'database: "oracle"')
-        with pytest.raises(ValidationError, match="Invalid database"):
+    def test_unknown_database_allowed(self):
+        """Unknown databases pass — no whitelist restriction."""
+        good = MINIMAL_YAML.replace('database: "none"', 'database: "oracle"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.database == "oracle"
+
+    def test_unknown_tester_allowed(self):
+        """Unknown testers pass — creative freedom."""
+        good = MINIMAL_YAML.replace('testing: "pytest"', 'testing: "tape"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.testing == "tape"
+
+    def test_cross_ecosystem_tester_rejected(self):
+        """Known tester from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('testing: "pytest"', 'testing: "jest"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_tester(self):
-        bad = MINIMAL_YAML.replace('testing: "pytest"', 'testing: "tape"')
-        with pytest.raises(ValidationError, match="Invalid test framework"):
+    def test_unknown_linter_allowed(self):
+        """Unknown linters pass — creative freedom."""
+        good = MINIMAL_YAML.replace('linter: "ruff"', 'linter: "superlint"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.linter == "superlint"
+
+    def test_cross_ecosystem_linter_rejected(self):
+        """Known linter from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('linter: "ruff"', 'linter: "eslint"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_linter(self):
-        bad = MINIMAL_YAML.replace('linter: "ruff"', 'linter: "superlint"')
-        with pytest.raises(ValidationError, match="Invalid linter"):
+    def test_unknown_type_checker_allowed(self):
+        """Unknown type checkers pass — creative freedom."""
+        good = MINIMAL_YAML.replace('type_checker: "mypy"', 'type_checker: "sorbet"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.type_checker == "sorbet"
+
+    def test_cross_ecosystem_type_checker_rejected(self):
+        """Known type checker from wrong ecosystem is rejected."""
+        bad = MINIMAL_YAML.replace('type_checker: "mypy"', 'type_checker: "tsc"')
+        with pytest.raises(ValidationError, match="Ecosystem inconsistency"):
             validate_archetype_yaml(bad)
 
-    def test_invalid_type_checker(self):
-        bad = MINIMAL_YAML.replace('type_checker: "mypy"', 'type_checker: "sorbet"')
-        with pytest.raises(ValidationError, match="Invalid type checker"):
-            validate_archetype_yaml(bad)
+    def test_none_always_passes(self):
+        """'none' is a universal value that passes for any language."""
+        good = MINIMAL_YAML.replace('framework: "fastapi"', 'framework: "none"')
+        good = good.replace('testing: "pytest"', 'testing: "none"')
+        good = good.replace('linter: "ruff"', 'linter: "none"')
+        good = good.replace('type_checker: "mypy"', 'type_checker: "none"')
+        schema = validate_archetype_yaml(good)
+        assert schema.tech_stack.framework == "none"
+
+    def test_real_frameworks_pass(self):
+        """Real frameworks like prefect, strawberry, langgraph should pass with python."""
+        for fw in ("prefect", "strawberry", "langgraph", "aiokafka", "grpcio", "fastmcp"):
+            good = MINIMAL_YAML.replace('framework: "fastapi"', f'framework: "{fw}"')
+            schema = validate_archetype_yaml(good)
+            assert schema.tech_stack.framework == fw
 
     # ── Pipeline validation ──
 
@@ -300,6 +352,124 @@ class TestArchetypeSchema:
         )
         with pytest.raises(ValidationError, match="empty"):
             validate_archetype_yaml(bad)
+
+    # ── Output kind ──
+
+    def test_default_output_kind_is_code(self):
+        schema = validate_archetype_yaml(MINIMAL_YAML)
+        assert schema.output_kind == OutputKind.code
+
+    def test_valid_output_kind_content(self):
+        good = MINIMAL_YAML + 'output_kind: "content"\n'
+        schema = validate_archetype_yaml(good)
+        assert schema.output_kind == OutputKind.content
+
+    def test_valid_output_kind_hybrid(self):
+        good = MINIMAL_YAML + 'output_kind: "hybrid"\n'
+        schema = validate_archetype_yaml(good)
+        assert schema.output_kind == OutputKind.hybrid
+
+    def test_invalid_output_kind(self):
+        bad = MINIMAL_YAML + 'output_kind: "magic"\n'
+        with pytest.raises(ValidationError):
+            validate_archetype_yaml(bad)
+
+    # ── Category ──
+
+    def test_default_category_is_general(self):
+        schema = validate_archetype_yaml(MINIMAL_YAML)
+        assert schema.category == "general"
+
+    def test_valid_code_category(self):
+        good = MINIMAL_YAML + 'category: "backend"\n'
+        schema = validate_archetype_yaml(good)
+        assert schema.category == "backend"
+
+    def test_valid_content_category(self):
+        good = MINIMAL_YAML + 'category: "documentation"\n'
+        schema = validate_archetype_yaml(good)
+        assert schema.category == "documentation"
+
+    def test_invalid_category(self):
+        bad = MINIMAL_YAML + 'category: "blockchain"\n'
+        with pytest.raises(ValidationError, match="Invalid category"):
+            validate_archetype_yaml(bad)
+
+    # ── Language classification ──
+
+    def test_tech_and_content_languages_disjoint(self):
+        """Tech and content language sets must not overlap."""
+        assert VALID_TECH_LANGUAGES & VALID_CONTENT_LANGUAGES == frozenset()
+
+    def test_content_languages_include_markdown(self):
+        assert "markdown" in VALID_CONTENT_LANGUAGES
+
+    def test_content_categories_include_documentation(self):
+        assert "documentation" in VALID_CONTENT_CATEGORIES
+        assert "documentation" in VALID_CATEGORIES
+
+    def test_code_categories_still_present(self):
+        for cat in ("backend", "frontend", "cli", "library"):
+            assert cat in VALID_CODE_CATEGORIES
+            assert cat in VALID_CATEGORIES
+
+    # ── Content archetype round-trip ──
+
+    def test_content_archetype_validates(self):
+        """A documentation archetype with markdown, none tooling, content kind."""
+        content_yaml = textwrap.dedent("""\
+            id: "docs_manual"
+            name: "Documentation Manual"
+            description: "End-user docs"
+            version: "1.0.0"
+            maturity: "production"
+            output_kind: "content"
+            category: "documentation"
+
+            tech_stack:
+              defaults:
+                language: "markdown"
+                framework: "none"
+                database: "none"
+                testing: "none"
+                linter: "none"
+                type_checker: "none"
+
+            pipeline:
+              levels: ["skeleton", "contracts", "wiring", "logic"]
+              enable_self_challenge: true
+              enable_structural_validation: true
+
+            structure:
+              expected_dirs: ["docs/"]
+              expected_files: ["README.md"]
+
+            validation:
+              checks: ["structure"]
+              lint_rules: "none"
+              type_strictness: "off"
+
+            self_challenge:
+              criteria:
+                - "Every section has a clear heading"
+        """)
+        schema = validate_archetype_yaml(content_yaml)
+        assert schema.output_kind == OutputKind.content
+        assert schema.category == "documentation"
+        assert schema.tech_stack.language == "markdown"
+        assert schema.tech_stack.framework == "none"
+
+    def test_output_kind_language_mismatch_warns(self):
+        """content kind + tech language should warn (not fail)."""
+        mixed = MINIMAL_YAML + 'output_kind: "content"\n'
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            schema = validate_archetype_yaml(mixed)
+            assert schema.output_kind == OutputKind.content
+            # Should have emitted a warning about python being a tech language
+            coherence_warnings = [x for x in w if "tech language" in str(x.message)]
+            assert len(coherence_warnings) >= 1
 
 
 # ══════════════════════════════════════════════════════════════════
