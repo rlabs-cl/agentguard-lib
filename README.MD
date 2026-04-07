@@ -3,11 +3,19 @@
 [![PyPI version](https://img.shields.io/pypi/v/rlabs-agentguard?color=blue)](https://pypi.org/project/rlabs-agentguard/)
 [![Python](https://img.shields.io/pypi/pyversions/rlabs-agentguard)](https://pypi.org/project/rlabs-agentguard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/rlabs-cl/agentguard-lib/blob/main/LICENSE)
+[![Downloads](https://static.pepy.tech/badge/rlabs-agentguard)](https://pepy.tech/project/rlabs-agentguard)
+[![CI](https://github.com/rlabs-cl/agentguard-lib/actions/workflows/ci.yml/badge.svg)](https://github.com/rlabs-cl/agentguard-lib/actions/workflows/ci.yml)
 
 > Agent-native quality engine for LLM code generation.
 > AgentGuard provides structured guidance to your AI agent — it never calls an LLM itself.
 
 ---
+
+## Why AgentGuard
+
+AI agents generate code fast. But without structure, they hallucinate imports, skip error handling, and produce inconsistent architecture.
+
+AgentGuard gives your agent a disciplined framework — without replacing it. It's the quality layer between your AI and your codebase.
 
 ## What It Does
 
@@ -65,6 +73,45 @@ Add to `.cursor/mcp.json` or equivalent:
 python -m agentguard  # starts MCP server on stdio
 ```
 
+## Quick Example — What You Get
+
+Ask your agent: *"Build a REST API for task management using AgentGuard"*
+
+AgentGuard's `skeleton` tool returns a structured file tree:
+
+```
+src/
+├── app.py              # FastAPI application entry point
+├── config.py           # Environment and app configuration
+├── models/
+│   └── task.py         # Task SQLAlchemy model
+├── routers/
+│   └── tasks.py        # CRUD endpoints for /tasks
+├── services/
+│   └── task_service.py # Business logic layer
+└── tests/
+    └── test_tasks.py   # Endpoint + service tests
+```
+
+Then `contracts_and_wiring` generates typed stubs with all imports wired:
+
+```python
+# src/routers/tasks.py
+from fastapi import APIRouter, Depends, HTTPException
+from ..services.task_service import TaskService
+from ..models.task import Task, TaskCreate, TaskUpdate
+
+router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+@router.get("/", response_model=list[Task])
+async def list_tasks(service: TaskService = Depends()) -> list[Task]: ...
+
+@router.post("/", response_model=Task, status_code=201)
+async def create_task(payload: TaskCreate, service: TaskService = Depends()) -> Task: ...
+```
+
+Your agent fills in the logic. AgentGuard ensures the structure is right from the start.
+
 ## Tools
 
 ### Agent-Native (structured guidance — no API key)
@@ -106,6 +153,8 @@ python -m agentguard  # starts MCP server on stdio
 | `debug_backend` | Python/FastAPI debugging protocol |
 | `debug_frontend` | React/TypeScript debugging protocol |
 
+> **+ 61 community archetypes on the [AgentGuard Marketplace](https://agentguard.rlabs.cl/marketplace)** — browse, install, and publish your own.
+
 ## Marketplace
 
 Install community archetypes:
@@ -138,6 +187,19 @@ pip install -e ".[dev]"
 pytest tests/
 ruff check agentguard/
 ```
+
+## Latest Release
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+- Setting up your dev environment
+- Creating custom archetypes
+- Submitting pull requests
+
+Looking for a place to start? Check out issues labeled [`good first issue`](https://github.com/rlabs-cl/agentguard-lib/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 
 ## License
 
