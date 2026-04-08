@@ -9,6 +9,8 @@
 > Agent-native quality engine for LLM code generation.
 > AgentGuard provides structured guidance to your AI agent — it never calls an LLM itself.
 
+**878+ monthly installs** · [Explore Marketplace](https://agentguard.rlabs.cl/marketplace) · [Documentation](https://agentguard.rlabs.cl/docs)
+
 ---
 
 ## Why AgentGuard

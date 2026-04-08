@@ -59,8 +59,8 @@ packages = ["agentguard"]
 allow-direct-references = true
 
 [project.urls]
-Homepage = "https://github.com/rlabs-cl/agentguard-lib"
-Documentation = "https://github.com/rlabs-cl/agentguard-lib#readme"
+Homepage = "https://agentguard.rlabs.cl"
+Documentation = "https://agentguard.rlabs.cl/docs"
 Repository = "https://github.com/rlabs-cl/agentguard-lib"
 Issues = "https://github.com/rlabs-cl/agentguard-lib/issues"
 Changelog = "https://github.com/rlabs-cl/agentguard-lib/releases"
