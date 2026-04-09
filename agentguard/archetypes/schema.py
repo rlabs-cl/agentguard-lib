@@ -151,6 +151,10 @@ def _check_ecosystem_consistency(
     """Return an error message if there's a known ecosystem incompatibility, else None."""
     if tool_value in _UNIVERSAL:
         return None
+    # Content languages (markdown, latex, etc.) are documentation archetypes —
+    # ecosystem checks don't apply because they don't produce executable code.
+    if language in VALID_CONTENT_LANGUAGES:
+        return None
     if tool_value not in ecosystem_map:
         # Unknown tool — allow it (creative freedom)
         return None
