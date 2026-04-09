@@ -194,7 +194,11 @@ class ArchetypeRegistry:
             expected_hash=content_hash,
         )
 
-        if entry.archetype.id != archetype_id:
+        # Normalize slug separators for comparison: marketplace uses hyphens
+        # (e.g. "business-case") but YAML IDs use underscores ("business_case").
+        normalized_expected = archetype_id.replace("-", "_")
+        normalized_actual = entry.archetype.id.replace("-", "_")
+        if normalized_actual != normalized_expected:
             # Roll back
             self._entries.pop(entry.archetype.id, None)
             raise IntegrityError(

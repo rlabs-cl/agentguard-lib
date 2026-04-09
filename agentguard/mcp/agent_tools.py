@@ -111,8 +111,12 @@ def _load_arch(archetype: str) -> Any:
     except KeyError:
         pass
 
+    # Check cache with both hyphen and underscore variants
+    normalized = archetype.replace("-", "_")
     if archetype in _marketplace_cache:
         return _marketplace_cache[archetype]
+    if normalized in _marketplace_cache:
+        return _marketplace_cache[normalized]
 
     return _fetch_from_marketplace(archetype)
 
@@ -173,6 +177,13 @@ def _try_load_cached_agx(archetype_id: str) -> Any | None:
 def _fetch_from_marketplace(archetype_id: str) -> Any:
     """Download a marketplace archetype via the platform API and cache it for this session.
 
+    Uses the secure 2-step download flow:
+    1. POST /engine/archetypes/{slug}/download-token → short-lived JWT
+    2. GET  /engine/archetypes/{slug}/content?token=<jwt> → YAML content
+
+    If the content is encrypted, obtains the encryption_salt from
+    /engine/validate and decrypts client-side.
+
     After a successful download the archetype is saved encrypted to disk
     (``~/.agentguard/archetypes/<slug>.agx``) so subsequent sessions don't
     need another API call.  Falls back to plaintext ``.yaml`` if the
@@ -209,18 +220,20 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
         _marketplace_cache[archetype_id] = cached
         return cached
 
-    # ── Download from marketplace API ──
+    # ── 2-step download from engine API ──
     base_url = os.environ.get(
-        "AGENTGUARD_API_URL", "https://api.agentguard.dev"
+        "AGENTGUARD_API_URL",
+        os.environ.get("AGENTGUARD_PLATFORM_URL", "https://api.agentguard.rlabs.cl"),
     ).rstrip("/")
-    url = f"{base_url}/api/marketplace/archetypes/{archetype_id}/download"
-    req = urllib.request.Request(
-        url, headers={"Authorization": f"Bearer {api_key}"}
-    )
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    # Step 1: obtain a short-lived download token
+    token_url = f"{base_url}/api/engine/archetypes/{archetype_id}/download-token"
+    token_req = urllib.request.Request(token_url, method="POST", headers=headers, data=b"")
 
     try:
-        with urllib.request.urlopen(req) as resp:
-            data = _json.loads(resp.read())
+        with urllib.request.urlopen(token_req) as resp:
+            token_data = _json.loads(resp.read())
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
             raise PermissionError(
@@ -241,7 +254,47 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
             f"'{archetype_id}': {exc.reason}"
         ) from exc
 
-    yaml_content: str = data["yaml_content"]
+    download_token = token_data["download_token"]
+
+    # Step 2: consume the token and receive YAML content
+    content_url = f"{base_url}/api/engine/archetypes/{archetype_id}/content?token={download_token}"
+    content_req = urllib.request.Request(content_url, headers=headers)
+
+    try:
+        with urllib.request.urlopen(content_req) as resp:
+            data = _json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(
+            f"Failed to download archetype content for '{archetype_id}': "
+            f"HTTP {exc.code} {exc.reason}"
+        ) from exc
+
+    yaml_content: str = data.get("yaml_content", "")
+    is_encrypted: bool = data.get("encrypted", False)
+
+    # ── Decrypt if needed ──
+    if is_encrypted:
+        nonce: str = data.get("nonce", "")
+        encryption_salt = _get_encryption_salt(base_url, api_key, headers)
+        if not encryption_salt:
+            raise RuntimeError(
+                f"Archetype '{archetype_id}' is encrypted but encryption_salt "
+                "could not be obtained from the platform. Ensure your API key "
+                "has an associated encryption_salt."
+            )
+        try:
+            from agentguard.platform.crypto import decrypt_for_key
+            key_prefix = api_key[:10]
+            yaml_content = decrypt_for_key(
+                {"ciphertext": yaml_content, "nonce": nonce},
+                encryption_salt,
+                key_prefix,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to decrypt archetype '{archetype_id}': {exc}"
+            ) from exc
+
     content_hash: str | None = data.get("content_hash")
     trust_level_str: str = data.get("trust_level", "community")
 
@@ -269,11 +322,68 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
             "Could not persist archetype '%s' to disk: %s", archetype_id, exc
         )
 
+    # Cache with both the marketplace slug and the YAML id (may differ in separator)
     _marketplace_cache[archetype_id] = entry.archetype
+    if entry.archetype.id != archetype_id:
+        _marketplace_cache[entry.archetype.id] = entry.archetype
     logger.info(
         "Loaded marketplace archetype '%s' (trust=%s)", archetype_id, trust_level_str
     )
     return entry.archetype
+
+
+# Module-level cache for encryption salt (fetched once per session)
+_cached_encryption_salt: str | None = None
+
+
+def _get_encryption_salt(base_url: str, api_key: str, headers: dict[str, str]) -> str | None:
+    """Obtain the encryption_salt for the current API key.
+
+    Resolution order:
+    1. Module-level cache (already fetched this session)
+    2. Local config file (~/.agentguard/config.yaml)
+    3. Platform /engine/validate endpoint (fetches and caches locally)
+    """
+    import json as _json
+    import urllib.request
+
+    global _cached_encryption_salt  # noqa: PLW0603
+
+    if _cached_encryption_salt:
+        return _cached_encryption_salt
+
+    # Try local config
+    try:
+        from agentguard.platform.config import load_config, save_config
+        cfg = load_config()
+        if cfg.encryption_salt:
+            _cached_encryption_salt = cfg.encryption_salt
+            return _cached_encryption_salt
+    except Exception:
+        cfg = None
+
+    # Fetch from /engine/validate
+    try:
+        validate_url = f"{base_url}/api/engine/validate"
+        req = urllib.request.Request(validate_url, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            data = _json.loads(resp.read())
+
+        salt = data.get("encryption_salt")
+        if salt:
+            _cached_encryption_salt = salt
+            # Persist to local config for future sessions
+            if cfg is not None:
+                cfg.encryption_salt = salt
+                try:
+                    save_config(cfg)
+                except Exception:
+                    pass
+            return salt
+    except Exception:
+        logger.debug("Could not fetch encryption_salt from /engine/validate", exc_info=True)
+
+    return None
 
 
 def _get_prompt(template_id: str) -> Any:
