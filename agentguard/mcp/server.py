@@ -300,8 +300,10 @@ def _create_mcp_server() -> Any:
 
     from agentguard.mcp.tools import (
         agentguard_get_archetype,
+        agentguard_install_archetype,
         agentguard_list_archetypes,
         agentguard_reload_archetypes,
+        agentguard_search_marketplace,
         agentguard_trace_summary,
         agentguard_validate,
     )
@@ -363,6 +365,30 @@ def _create_mcp_server() -> Any:
         except Exception as e:
             _record_error('reload_archetypes', _start, e)
             raise
+
+    @mcp.tool()
+    async def search_marketplace(
+        query: str | None = None,
+        category: str | None = None,
+        sort: str = "popular",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> str:
+        """Search and browse published marketplace archetypes.
+        Requires AGENTGUARD_API_KEY configured via env var or ~/.agentguard/config.yaml.
+        Returns items with slug, name, description, price, tags and licensed status."""
+        return await agentguard_search_marketplace(
+            query=query, category=category, sort=sort,
+            page=page, page_size=page_size,
+        )
+
+    @mcp.tool()
+    async def install_archetype(slug: str) -> str:
+        """Download and install a marketplace archetype to ~/.agentguard/archetypes/.
+        Verifies license, downloads with integrity check, saves locally, and reloads
+        the registry so the archetype is immediately available without restarting.
+        Requires AGENTGUARD_API_KEY configured via env var or ~/.agentguard/config.yaml."""
+        return await agentguard_install_archetype(slug=slug)
 
     @mcp.tool()
     async def trace_summary(trace_id: str | None = None) -> str:
