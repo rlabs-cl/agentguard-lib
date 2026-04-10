@@ -493,8 +493,21 @@ async def agentguard_skeleton(
     """
     try:
         arch = _load_arch(archetype)
-    except Exception:
-        # Archetype not found — return helpful error with available list
+    except (PermissionError, RuntimeError) as exc:
+        # Auth or download error — surface to the LLM so it can inform the user
+        return json.dumps(
+            {
+                "error": str(exc),
+                "archetype_requested": archetype,
+                "fix": (
+                    "Check that AGENTGUARD_API_KEY is set correctly in .vscode/mcp.json "
+                    "and that you have access to this archetype in the marketplace."
+                ),
+            },
+            indent=2,
+        )
+    except (KeyError, Exception):
+        # Archetype genuinely not found — return helpful error with available list
         from agentguard.archetypes.registry import get_archetype_registry
         available_ids = get_archetype_registry().list_available()
         return json.dumps(
@@ -503,7 +516,8 @@ async def agentguard_skeleton(
                 "available": available_ids,
                 "fix": (
                     "Pass one of the listed archetype IDs as the `archetype` parameter. "
-                    "Call `list_archetypes` to get full descriptions."
+                    "Call `list_archetypes` to get full descriptions, including marketplace "
+                    "archetypes. Use `search_marketplace` to discover more."
                 ),
             },
             indent=2,
@@ -914,7 +928,7 @@ async def agentguard_digest(
         try:
             arch = _load_arch(archetype)
             arch_id = arch.id
-        except Exception:
+        except (KeyError, Exception):
             arch_id = archetype  # use the slug as-is if not found
 
     file_digests: list[dict[str, Any]] = []
@@ -1071,7 +1085,7 @@ async def agentguard_debug(
                 "Failure is non-deterministic or environment-specific.",
             ],
         }
-    except Exception:
+    except (KeyError, Exception):
         debug_config = {
             "archetype_tech_stack": None,
             "data_sources": [
@@ -1191,7 +1205,7 @@ async def agentguard_migrate(
             "linter": arch.tech_stack.linter,
             "type_checker": arch.tech_stack.type_checker,
         }
-    except Exception:
+    except (KeyError, Exception):
         migration_config = {
             "risk_areas": [
                 "data access patterns and ORM usage",
