@@ -96,6 +96,16 @@ _CONFIDENTIALITY_DIRECTIVE = (
 _marketplace_cache: dict[str, Any] = {}
 
 
+def _normalize_slug(slug: str, sep: str = "-") -> str:
+    """Normalize archetype slug to a consistent separator.
+
+    The marketplace uses hyphens (``hexagonal-api``) while YAML IDs use
+    underscores (``hexagonal_api``).  This helper converts to the requested
+    separator so look-ups work regardless of what the caller provides.
+    """
+    return slug.replace("-", "_").replace("_", sep)
+
+
 def _load_arch(archetype: str) -> Any:
     """Load an archetype by ID.
 
@@ -106,17 +116,20 @@ def _load_arch(archetype: str) -> Any:
     """
     from agentguard.archetypes.base import Archetype
 
-    try:
-        return Archetype.load(archetype)
-    except KeyError:
-        pass
+    # Try both separator variants for the local registry
+    underscore = _normalize_slug(archetype, "_")
+    hyphen = _normalize_slug(archetype, "-")
+
+    for variant in (archetype, underscore, hyphen):
+        try:
+            return Archetype.load(variant)
+        except KeyError:
+            continue
 
     # Check cache with both hyphen and underscore variants
-    normalized = archetype.replace("-", "_")
-    if archetype in _marketplace_cache:
-        return _marketplace_cache[archetype]
-    if normalized in _marketplace_cache:
-        return _marketplace_cache[normalized]
+    for variant in (archetype, underscore, hyphen):
+        if variant in _marketplace_cache:
+            return _marketplace_cache[variant]
 
     return _fetch_from_marketplace(archetype)
 
@@ -140,11 +153,27 @@ def _try_load_cached_agx(archetype_id: str) -> Any | None:
     from agentguard.archetypes.schema import TrustLevel
 
     user_dir = _user_archetypes_dir()
-    agx_path = user_dir / f"{archetype_id}{AGX_EXTENSION}"
-    yaml_path = user_dir / f"{archetype_id}.yaml"
+
+    # Try both slug separators (underscore & hyphen) for local files
+    underscore = _normalize_slug(archetype_id, "_")
+    hyphen = _normalize_slug(archetype_id, "-")
+    candidates = dict.fromkeys([archetype_id, underscore, hyphen])  # unique, ordered
+
+    agx_path = None
+    yaml_path = None
+    for slug in candidates:
+        p = user_dir / f"{slug}{AGX_EXTENSION}"
+        if p.exists():
+            agx_path = p
+            break
+    for slug in candidates:
+        p = user_dir / f"{slug}.yaml"
+        if p.exists():
+            yaml_path = p
+            break
 
     # Try encrypted first, then plaintext
-    if agx_path.exists() and crypto_available():
+    if agx_path is not None and crypto_available():
         try:
             yaml_content = load_agx(archetype_id, user_dir)
             registry = get_archetype_registry()
@@ -214,11 +243,12 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
             "Set the AGENTGUARD_API_KEY environment variable to load marketplace archetypes."
         )
 
-    # ── Try local encrypted/plaintext cache first ──
-    cached = _try_load_cached_agx(archetype_id)
-    if cached is not None:
-        _marketplace_cache[archetype_id] = cached
-        return cached
+    # ── Try local encrypted/plaintext cache first (both slug formats) ──
+    for slug_variant in dict.fromkeys([archetype_id, _normalize_slug(archetype_id, "_"), _normalize_slug(archetype_id, "-")]):
+        cached = _try_load_cached_agx(slug_variant)
+        if cached is not None:
+            _marketplace_cache[archetype_id] = cached
+            return cached
 
     # ── 2-step download from engine API ──
     base_url = os.environ.get(
@@ -227,37 +257,52 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
     ).rstrip("/")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    # Step 1: obtain a short-lived download token
-    token_url = f"{base_url}/api/engine/archetypes/{archetype_id}/download-token"
-    token_req = urllib.request.Request(token_url, method="POST", headers=headers, data=b"")
+    # The marketplace API uses hyphenated slugs (e.g. "hexagonal-api") but users
+    # and YAML files typically use underscores ("hexagonal_api").  Try the
+    # hyphenated form first (marketplace canonical), then the original input.
+    hyphen_slug = _normalize_slug(archetype_id, "-")
+    slugs_to_try = list(dict.fromkeys([hyphen_slug, archetype_id]))
 
-    try:
-        with urllib.request.urlopen(token_req) as resp:
-            token_data = _json.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        if exc.code == 401:
-            raise PermissionError(
-                "Invalid or expired API key — cannot load marketplace archetype. "
-                "Check the AGENTGUARD_API_KEY environment variable."
+    token_data = None
+    resolved_slug = None
+    last_exc: Exception | None = None
+
+    for slug in slugs_to_try:
+        token_url = f"{base_url}/api/engine/archetypes/{slug}/download-token"
+        token_req = urllib.request.Request(token_url, method="POST", headers=headers, data=b"")
+        try:
+            with urllib.request.urlopen(token_req) as resp:
+                token_data = _json.loads(resp.read())
+                resolved_slug = slug
+                break
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            if exc.code == 404:
+                continue  # Try the other slug format
+            if exc.code == 401:
+                raise PermissionError(
+                    "Invalid or expired API key — cannot load marketplace archetype. "
+                    "Check the AGENTGUARD_API_KEY environment variable."
+                ) from exc
+            if exc.code == 403:
+                raise PermissionError(
+                    f"Access denied for archetype '{archetype_id}'. "
+                    "You must be the author or have purchased it in the AgentGuard marketplace."
+                ) from exc
+            raise RuntimeError(
+                f"Marketplace API error {exc.code} while loading archetype "
+                f"'{archetype_id}': {exc.reason}"
             ) from exc
-        if exc.code == 403:
-            raise PermissionError(
-                f"Access denied for archetype '{archetype_id}'. "
-                "You must be the author or have purchased it in the AgentGuard marketplace."
-            ) from exc
-        if exc.code == 404:
-            raise KeyError(
-                f"Archetype '{archetype_id}' not found in the marketplace."
-            ) from exc
-        raise RuntimeError(
-            f"Marketplace API error {exc.code} while loading archetype "
-            f"'{archetype_id}': {exc.reason}"
-        ) from exc
+
+    if token_data is None or resolved_slug is None:
+        raise KeyError(
+            f"Archetype '{archetype_id}' not found in the marketplace."
+        ) from last_exc
 
     download_token = token_data["download_token"]
 
     # Step 2: consume the token and receive YAML content
-    content_url = f"{base_url}/api/engine/archetypes/{archetype_id}/content?token={download_token}"
+    content_url = f"{base_url}/api/engine/archetypes/{resolved_slug}/content?token={download_token}"
     content_req = urllib.request.Request(content_url, headers=headers)
 
     try:
