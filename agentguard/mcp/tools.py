@@ -127,13 +127,28 @@ async def agentguard_validate(
 
 
 async def agentguard_list_archetypes() -> str:
-    """List all available project archetypes with their descriptions."""
+    """List all available project archetypes (local + marketplace).
+
+    Returns local (built-in and installed) archetypes first, then appends
+    marketplace archetypes that are not yet installed locally.  Marketplace
+    items are marked with ``"source": "marketplace"`` and include their slug
+    for installation or direct use.
+    """
+    import os
+    import urllib.error
+    import urllib.request
+
     from agentguard.archetypes.registry import get_archetype_registry
 
     registry = get_archetype_registry()
     archetypes = []
+    local_ids: set[str] = set()
+
     for arch_id in registry.list_available():
         entry = registry.get_entry(arch_id)
+        local_ids.add(arch_id)
+        # Also track the hyphenated form so we can deduplicate later
+        local_ids.add(arch_id.replace("_", "-"))
         archetypes.append(
             {
                 "id": entry.archetype.id,
@@ -141,8 +156,58 @@ async def agentguard_list_archetypes() -> str:
                 "description": entry.archetype.description,
                 "trust_level": entry.trust_level.value,
                 "content_hash": entry.content_hash,
+                "source": "local",
             }
         )
+
+    # ── Append marketplace archetypes not installed locally ──
+    base_url = os.environ.get(
+        "AGENTGUARD_API_URL",
+        os.environ.get("AGENTGUARD_PLATFORM_URL", "https://api.agentguard.rlabs.cl"),
+    ).rstrip("/")
+
+    try:
+        # Paginate through all marketplace results (API uses 1-based page param)
+        page = 1
+        page_size = 20
+        max_pages = 5  # safety limit
+        while page <= max_pages:
+            url = f"{base_url}/api/marketplace/archetypes?page={page}&limit={page_size}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+
+            items = data.get("items", [])
+            if not items:
+                break
+
+            for item in items:
+                slug = item.get("slug", "")
+                underscore_id = slug.replace("-", "_")
+                # Skip if already available locally
+                if slug in local_ids or underscore_id in local_ids:
+                    continue
+                archetypes.append(
+                    {
+                        "id": slug,
+                        "name": item.get("name", ""),
+                        "description": item.get("description", ""),
+                        "trust_level": item.get("trust_level", "community"),
+                        "content_hash": item.get("content_hash", ""),
+                        "source": "marketplace",
+                        "category": item.get("category", ""),
+                    }
+                )
+
+            total = data.get("total", 0)
+            if page * page_size >= total:
+                break
+            page += 1
+
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        logger.warning("Could not fetch marketplace archetypes: %s", exc)
+        # Non-fatal — we still return local archetypes
+
     return json.dumps(archetypes, indent=2)
 
 
@@ -181,6 +246,80 @@ async def agentguard_get_archetype(name: str) -> str:
     )
 
 
+async def agentguard_search_marketplace(
+    query: str = "",
+    category: str = "",
+) -> str:
+    """Search the AgentGuard marketplace for available archetypes.
+
+    Returns published archetypes from the online marketplace, including those
+    not yet installed locally.  Useful for discovering new archetypes.
+
+    Parameters
+    ----------
+    query : str, optional
+        Free-text search (name, description, tags).
+    category : str, optional
+        Filter by category (e.g. ``engineering``, ``product-design``,
+        ``technical-specs``, ``marketing-gtm``, ``data-analytics``,
+        ``process-operations``, ``strategy-management``, ``academic-writing``).
+    """
+    import os
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    base_url = os.environ.get(
+        "AGENTGUARD_API_URL",
+        os.environ.get("AGENTGUARD_PLATFORM_URL", "https://api.agentguard.rlabs.cl"),
+    ).rstrip("/")
+
+    params: dict[str, str] = {}
+    if query:
+        params["q"] = query
+    if category:
+        params["category"] = category
+
+    qs = urllib.parse.urlencode(params) if params else ""
+    url = f"{base_url}/api/marketplace/archetypes"
+    if qs:
+        url = f"{url}?{qs}"
+
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, OSError) as exc:
+        return json.dumps(
+            {"error": f"Could not reach marketplace: {exc}", "items": []},
+            indent=2,
+        )
+
+    # Build a compact response for the LLM
+    items = data.get("items", [])
+    results = []
+    for item in items:
+        results.append(
+            {
+                "slug": item.get("slug", ""),
+                "name": item.get("name", ""),
+                "description": item.get("description", ""),
+                "category": item.get("category", ""),
+                "tags": item.get("tags", []),
+                "price_cents": item.get("price_cents", 0),
+                "currency": item.get("currency", "clp"),
+                "downloads": item.get("downloads", 0),
+                "rating_avg": item.get("rating_avg", 0),
+                "trust_level": item.get("trust_level", "community"),
+            }
+        )
+
+    return json.dumps(
+        {"total": len(results), "items": results},
+        indent=2,
+    )
+
+
 async def agentguard_reload_archetypes() -> str:
     """Reload user-installed archetypes from ~/.agentguard/archetypes/.
 
@@ -201,157 +340,6 @@ async def agentguard_reload_archetypes() -> str:
         },
         indent=2,
     )
-
-
-async def agentguard_search_marketplace(
-    query: str | None = None,
-    category: str | None = None,
-    sort: str = "popular",
-    page: int = 1,
-    page_size: int = 20,
-) -> str:
-    """Search and browse published marketplace archetypes.
-
-    Requires AGENTGUARD_API_KEY (or ~/.agentguard/config.yaml) to be configured.
-    Returns items with slug, name, description, price, tags and licensed status.
-    """
-    from agentguard.platform.client import PlatformClient
-    from agentguard.platform.config import load_config
-
-    config = load_config()
-    if not config.api_key:
-        return json.dumps(
-            {
-                "error": "AGENTGUARD_API_KEY not configured.",
-                "hint": (
-                    "Set AGENTGUARD_API_KEY as an env var or add api_key to "
-                    "~/.agentguard/config.yaml"
-                ),
-            },
-            indent=2,
-        )
-
-    client = PlatformClient(config)
-    try:
-        data = await client.search_marketplace(
-            query=query,
-            category=category,
-            sort=sort,
-            page=page,
-            page_size=page_size,
-        )
-        items = data.get("items", [])
-        result = {
-            "total": data.get("total", len(items)),
-            "page": data.get("page", page),
-            "page_size": data.get("page_size", page_size),
-            "items": [
-                {
-                    "slug": item.get("slug"),
-                    "name": item.get("name"),
-                    "description": item.get("description", ""),
-                    "category": item.get("category", ""),
-                    "price_cents": item.get("price_cents"),
-                    "currency": item.get("currency", "clp"),
-                    "tags": item.get("tags", []),
-                    "version": item.get("version", ""),
-                    "downloads": item.get("downloads", 0),
-                }
-                for item in items
-            ],
-        }
-        return json.dumps(result, indent=2)
-    except Exception as exc:
-        return json.dumps({"error": str(exc)}, indent=2)
-    finally:
-        await client.close()
-
-
-async def agentguard_install_archetype(slug: str) -> str:
-    """Download and install a marketplace archetype to ~/.agentguard/archetypes/.
-
-    Verifies license, downloads the YAML with integrity check, saves it locally,
-    and reloads the registry so the archetype is immediately available.
-    Requires AGENTGUARD_API_KEY (or ~/.agentguard/config.yaml) to be configured.
-    """
-    from pathlib import Path
-
-    from agentguard.platform.client import PlatformClient
-    from agentguard.platform.config import load_config
-
-    config = load_config()
-    if not config.api_key:
-        return json.dumps(
-            {
-                "error": "AGENTGUARD_API_KEY not configured.",
-                "hint": (
-                    "Set AGENTGUARD_API_KEY as an env var or add api_key to "
-                    "~/.agentguard/config.yaml"
-                ),
-            },
-            indent=2,
-        )
-
-    client = PlatformClient(config)
-    try:
-        # 0. Auto-fetch encryption_salt if missing (needed for decryption)
-        if not config.encryption_salt:
-            try:
-                info = await client.validate_api_key()
-                salt = info.get("encryption_salt")
-                if salt:
-                    config.encryption_salt = salt
-                    from agentguard.platform.config import save_config
-                    save_config(config)
-            except Exception:
-                pass
-
-        # 1. Check license
-        license_info = await client.check_license(slug)
-        if not license_info.get("licensed"):
-            return json.dumps(
-                {
-                    "error": f"Not licensed for archetype '{slug}'.",
-                    "reason": license_info.get("reason", ""),
-                    "hint": f"Purchase '{slug}' at https://agentguard.rlabs.cl",
-                },
-                indent=2,
-            )
-
-        # 2. Download (includes integrity hash check)
-        data = await client.download_archetype(slug)
-        yaml_content: str = data["yaml_content"]
-        content_hash: str = data.get("content_hash", "")
-        name: str = data.get("name", slug)
-        version: str = data.get("version", "")
-
-        # 3. Save to ~/.agentguard/archetypes/{slug}.yaml
-        dest_dir = Path.home() / ".agentguard" / "archetypes"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / f"{slug}.yaml"
-        dest.write_text(yaml_content, encoding="utf-8")
-
-        # 4. Reload registry so it's available immediately
-        from agentguard.archetypes.registry import get_archetype_registry
-        registry = get_archetype_registry()
-        reloaded = registry.reload_user_archetypes()
-
-        return json.dumps(
-            {
-                "status": "installed",
-                "slug": slug,
-                "name": name,
-                "version": version,
-                "content_hash": content_hash[:16] + "…" if content_hash else "",
-                "path": str(dest),
-                "archetypes_now_available": registry.list_available(),
-            },
-            indent=2,
-        )
-    except Exception as exc:
-        return json.dumps({"error": str(exc), "slug": slug}, indent=2)
-    finally:
-        await client.close()
 
 
 async def agentguard_trace_summary(trace_id: str | None = None) -> str:
