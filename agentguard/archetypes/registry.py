@@ -264,14 +264,16 @@ class ArchetypeRegistry:
     def _load_user_archetypes(self) -> None:
         """Load user-installed archetypes from ~/.agentguard/archetypes/.
 
-        Errors are logged and skipped so a corrupt user archetype never prevents
-        the registry from starting.  Official (built-in) archetypes are never
-        overwritten by user-installed ones.
+        Loads both plaintext ``.yaml`` files and encrypted ``.agx`` files
+        (marketplace archetypes cached locally).  Errors are logged and skipped
+        so a corrupt user archetype never prevents the registry from starting.
+        Official (built-in) archetypes are never overwritten by user-installed ones.
         """
         user_dir = Path.home() / ".agentguard" / "archetypes"
         if not user_dir.exists():
             return
 
+        # ── Load plaintext .yaml files ──
         for yaml_file in sorted(user_dir.glob("*.yaml")):
             raw = yaml_file.read_text(encoding="utf-8")
             try:
@@ -281,6 +283,36 @@ class ArchetypeRegistry:
                 _log.warning(
                     "Failed to load user archetype %s — skipping",
                     yaml_file.name,
+                    exc_info=True,
+                )
+
+        # ── Load encrypted .agx files (marketplace cache) ──
+        try:
+            from agentguard.archetypes.crypto import (
+                AGX_EXTENSION,
+                crypto_available,
+                load_archetype as load_agx,
+            )
+        except ImportError:
+            return  # cryptography not installed — skip .agx files
+
+        if not crypto_available():
+            return
+
+        for agx_file in sorted(user_dir.glob(f"*{AGX_EXTENSION}")):
+            slug = agx_file.stem
+            # Skip if already loaded (e.g. from a .yaml with the same name)
+            underscore_id = slug.replace("-", "_")
+            if slug in self._entries or underscore_id in self._entries:
+                continue
+            try:
+                raw = load_agx(slug, user_dir)
+                self.register_validated(raw, trust_level=TrustLevel.community)
+                _log.debug("Loaded encrypted user archetype: %s", slug)
+            except Exception:
+                _log.warning(
+                    "Failed to load encrypted archetype %s — skipping",
+                    agx_file.name,
                     exc_info=True,
                 )
 

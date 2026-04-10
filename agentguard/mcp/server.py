@@ -31,11 +31,42 @@ def _create_mcp_server() -> Any:
     mcp = FastMCP(
         "AgentGuard",
         instructions=(
-            "Quality-assured LLM code generation engine. "
-            "Use the agent-native tools (skeleton -> contracts_and_wiring -> logic -> "
-            "get_challenge_criteria + digest) to get structured prompts that "
-            "guide YOUR own code generation -- no API key needed. "
-            "Use validate to mechanically check code you produce."
+            "Quality-assured LLM code generation engine.\n\n"
+            "## ARCHETYPE USAGE (READ THIS FIRST)\n\n"
+            "Every AgentGuard workflow starts by choosing an ARCHETYPE — a YAML config "
+            "that defines tech stack, structure, validation, and quality criteria for a "
+            "project type.\n\n"
+            "### How archetypes work:\n"
+            "- **Built-in archetypes** (always available, no API key): api_backend, "
+            "web_app, react_spa, cli_tool, library, script, debug_backend, debug_frontend.\n"
+            "- **Marketplace archetypes** (require AGENTGUARD_API_KEY): community-created "
+            "archetypes for specialized project types (PRDs, BPMN, business cases, etc.).\n\n"
+            "### How to USE an archetype (built-in OR marketplace):\n"
+            "1. JUST PASS ITS NAME/SLUG as the `archetype` parameter to any tool "
+            "(skeleton, contracts_and_wiring, validate, etc.).\n"
+            "2. AgentGuard handles everything automatically:\n"
+            "   - Built-in → loaded instantly from local registry.\n"
+            "   - Marketplace → downloaded, verified, cached, and loaded transparently.\n"
+            "   - The user MUST own or have purchased the archetype (enforced by the API).\n"
+            "3. You do NOT need to run `agentguard install` or any CLI command. "
+            "Just use the archetype name directly in tool calls.\n\n"
+            "### If you don't know which archetype to use:\n"
+            "1. Call `my_archetypes` — shows ONLY archetypes this user can access "
+            "(built-in + authored + purchased), with a clear table.\n"
+            "2. Call `list_archetypes` — shows ALL available (local + marketplace catalog).\n"
+            "3. Call `search_marketplace(query=..., category=...)` — discover by keyword.\n"
+            "4. Call `get_archetype(name=...)` — see full details of a specific one.\n"
+            "5. Call `docs(topic='archetypes')` — learn about the archetype system.\n\n"
+            "### Common errors and fixes:\n"
+            "- **'not found'** → check the slug spelling, try both hyphens and underscores.\n"
+            "- **'API key not set'** → marketplace archetypes need AGENTGUARD_API_KEY in env.\n"
+            "- **'access denied' (403)** → user hasn't purchased this archetype.\n\n"
+            "## CODE GENERATION PIPELINE\n\n"
+            "Once you have an archetype, use the pipeline tools:\n"
+            "skeleton → contracts_and_wiring → logic (per function) → "
+            "get_challenge_criteria + digest → self-review.\n"
+            "No API key needed for pipeline tools — YOU (the agent) do the generation.\n"
+            "Use `validate` to mechanically check code you produce."
         ),
     )
 
@@ -105,9 +136,14 @@ def _create_mcp_server() -> Any:
         maturity: str | None = None,
     ) -> str:
         """Get the L1 skeleton prompt: file tree with responsibilities.
-        Returns structured instructions for generating the project skeleton.
-        Now includes file tiers and infrastructure guidance.
-        No API key needed — YOU (the agent) do the generation."""
+
+        This is the FIRST step of code generation. Pass any archetype name/slug
+        — built-in or marketplace. Marketplace archetypes are auto-downloaded
+        transparently (requires AGENTGUARD_API_KEY and user must own the archetype).
+
+        Returns structured instructions for generating the project skeleton
+        with file tiers (config/foundation/feature) and infrastructure guidance.
+        No API key needed for the generation itself — YOU (the agent) do it."""
         _start = time.monotonic()
         try:
             result = await agentguard_skeleton(
@@ -301,6 +337,7 @@ def _create_mcp_server() -> Any:
     from agentguard.mcp.tools import (
         agentguard_get_archetype,
         agentguard_list_archetypes,
+        agentguard_my_archetypes,
         agentguard_reload_archetypes,
         agentguard_search_marketplace,
         agentguard_trace_summary,
@@ -327,7 +364,16 @@ def _create_mcp_server() -> Any:
 
     @mcp.tool()
     async def list_archetypes() -> str:
-        """List all available project archetypes with their descriptions."""
+        """List ALL available archetypes (built-in + marketplace).
+
+        Returns each archetype's id, name, description, and source.
+        - source="local" → built-in or already installed, ready to use immediately.
+        - source="marketplace" → available for download; will be auto-downloaded
+          when you pass its id/slug to any pipeline tool (requires AGENTGUARD_API_KEY).
+
+        Use this to discover which archetypes exist before starting a workflow.
+        To use any archetype, just pass its 'id' as the `archetype` parameter
+        to skeleton, contracts_and_wiring, validate, or any other pipeline tool."""
         _start = time.monotonic()
         try:
             result = await agentguard_list_archetypes()
@@ -338,9 +384,41 @@ def _create_mcp_server() -> Any:
             raise
 
     @mcp.tool()
+    async def my_archetypes() -> str:
+        """List archetypes THIS USER can actually use, with ownership details.
+
+        Returns a table showing for each accessible archetype:
+        - **access**: 'built-in' (free, always available) | 'authored' (user created it) |
+          'purchased' (user bought it) | 'authored/purchased' (cached locally)
+        - **location**: 'local' (in memory) | 'cached' (on disk, loads instantly) |
+          'remote' (will auto-download on first use)
+        - **ready**: whether it can be used immediately without any download
+
+        Use this tool FIRST when the user asks "which archetypes do I have?" or
+        "what can I use?" — it only shows archetypes the user has rights to,
+        unlike list_archetypes which shows everything including ones they can't access.
+
+        Requires AGENTGUARD_API_KEY for marketplace ownership checks.
+        Built-in archetypes are always listed regardless of API key."""
+        _start = time.monotonic()
+        try:
+            result = await agentguard_my_archetypes()
+            _record_call('my_archetypes', _start, result=result)
+            return result
+        except Exception as e:
+            _record_error('my_archetypes', _start, e)
+            raise
+
+    @mcp.tool()
     async def get_archetype(name: str) -> str:
-        """Get detailed configuration for a specific archetype
-        (tech stack, validation rules, challenge criteria)."""
+        """Get detailed configuration for a specific archetype.
+
+        Returns tech stack, validation rules, pipeline levels, and challenge
+        criteria. Use this to inspect an archetype BEFORE starting a generation
+        workflow, or to confirm it matches the project type you need.
+
+        The `name` parameter accepts both hyphenated slugs (e.g. 'hexagonal-api')
+        and underscored ids (e.g. 'hexagonal_api') — both resolve to the same archetype."""
         _start = time.monotonic()
         try:
             result = await agentguard_get_archetype(name=name)
@@ -355,12 +433,15 @@ def _create_mcp_server() -> Any:
         query: str = "",
         category: str = "",
     ) -> str:
-        """Search the AgentGuard marketplace for archetypes you can install and use.
+        """Search the AgentGuard marketplace to discover archetypes by keyword or category.
 
-        Browse all published archetypes or filter by keyword / category.
-        Categories include: engineering, product-design, technical-specs,
-        marketing-gtm, data-analytics, process-operations, strategy-management,
-        academic-writing."""
+        Returns name, description, slug, price, and category for each match.
+        To USE a marketplace archetype after finding it here, just pass its `slug`
+        as the `archetype` parameter to any pipeline tool (skeleton, validate, etc.)
+        — it will be auto-downloaded if the user owns/purchased it. No CLI install needed.
+
+        Categories: engineering, product-design, technical-specs, marketing-gtm,
+        data-analytics, process-operations, strategy-management, academic-writing."""
         _start = time.monotonic()
         try:
             result = await agentguard_search_marketplace(query=query, category=category)
@@ -374,8 +455,9 @@ def _create_mcp_server() -> Any:
     async def reload_archetypes() -> str:
         """Reload user-installed archetypes from ~/.agentguard/archetypes/.
 
-        Call this after running 'agentguard install <slug>' so the MCP server
-        picks up the new archetype without restarting."""
+        Call this ONLY if you manually placed YAML files in ~/.agentguard/archetypes/.
+        NOT needed for marketplace archetypes — those are auto-loaded when you use them.
+        NOT needed for built-in archetypes — those are always available."""
         _start = time.monotonic()
         try:
             result = await agentguard_reload_archetypes()
@@ -408,10 +490,16 @@ def _create_mcp_server() -> Any:
     @mcp.tool()
     async def docs(topic: str = "overview") -> str:
         """Get AgentGuard documentation on a specific topic.
-        Topics: overview, installation, archetypes, creating_archetypes, pipeline,
+
+        KEY TOPICS for archetype usage:
+        - 'archetypes' → how archetypes work, built-in list, how to use marketplace ones
+        - 'marketplace' → discovering, using, and publishing archetypes
+        - 'pipeline' → the L1-L4 code generation flow
+        - 'overview' → what AgentGuard is and how it works
+
+        All topics: overview, installation, archetypes, creating_archetypes, pipeline,
         skeleton, contracts, wiring, logic, challenge, validation,
-        marketplace, configuration, archetype_yaml_schema.
-        Pass a topic name or keyword to search."""
+        marketplace, configuration, archetype_yaml_schema, usage_stats."""
         _start = time.monotonic()
         try:
             result = get_docs(topic)

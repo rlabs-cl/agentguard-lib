@@ -57,9 +57,12 @@ async def agentguard_validate(
                 "error": f"Archetype '{archetype}' not found.",
                 "available": available,
                 "hint": (
-                    "Install a marketplace archetype with: agentguard install <slug>. "
-                    "If the MCP server was already running when you installed it, "
-                    "call the reload_archetypes tool first."
+                    "The archetype was not found in the built-in registry. "
+                    "Try using the archetype name directly in a pipeline tool "
+                    "(skeleton, contracts_and_wiring, etc.) — marketplace archetypes "
+                    "are auto-downloaded when used. If the archetype doesn't exist "
+                    "at all, use `list_archetypes` or `search_marketplace` to find "
+                    "the correct slug. Both hyphens and underscores are accepted."
                 ),
             },
             indent=2,
@@ -208,7 +211,17 @@ async def agentguard_list_archetypes() -> str:
         logger.warning("Could not fetch marketplace archetypes: %s", exc)
         # Non-fatal — we still return local archetypes
 
-    return json.dumps(archetypes, indent=2)
+    result = {
+        "usage_hint": (
+            "To USE any archetype, pass its 'id' as the `archetype` parameter to "
+            "skeleton, contracts_and_wiring, validate, or any pipeline tool. "
+            "Marketplace archetypes are auto-downloaded — no install command needed. "
+            "source='local' means ready to use; source='marketplace' requires "
+            "AGENTGUARD_API_KEY and the user must own/have purchased it."
+        ),
+        "archetypes": archetypes,
+    }
+    return json.dumps(result, indent=2)
 
 
 async def agentguard_get_archetype(name: str) -> str:
@@ -318,6 +331,247 @@ async def agentguard_search_marketplace(
         {"total": len(results), "items": results},
         indent=2,
     )
+
+
+async def agentguard_my_archetypes() -> str:
+    """List archetypes the current user can actually use, with ownership/access details.
+
+    For each archetype returns:
+    - id, name, description
+    - access: "built-in" | "authored" | "purchased" | "available_remote"
+    - location: "local" (loaded in memory) | "cached" (on disk) | "remote" (needs download)
+    - ready: true if the archetype can be used immediately without any download
+
+    Requires AGENTGUARD_API_KEY for marketplace access info.
+    Built-in archetypes are always listed regardless of API key.
+
+    The response includes a markdown table for easy reading.
+    """
+    import os
+    import urllib.error
+    import urllib.request
+    from pathlib import Path
+
+    from agentguard.archetypes.registry import get_archetype_registry
+
+    registry = get_archetype_registry()
+    results: list[dict] = []
+    seen_ids: set[str] = set()
+
+    # ── 1. Built-in archetypes (always available) ──
+    for arch_id in registry.list_available():
+        entry = registry.get_entry(arch_id)
+        seen_ids.add(arch_id)
+        seen_ids.add(arch_id.replace("_", "-"))
+        is_official = entry.trust_level.value == "official"
+        results.append({
+            "id": arch_id,
+            "name": entry.archetype.name,
+            "description": entry.archetype.description,
+            "access": "built-in" if is_official else "authored/purchased",
+            "location": "local",
+            "ready": True,
+        })
+
+    # ── 2. Check disk cache for .agx/.yaml not yet in registry ──
+    user_dir = Path.home() / ".agentguard" / "archetypes"
+    if user_dir.exists():
+        for f in sorted(user_dir.iterdir()):
+            if f.suffix not in (".yaml", ".agx"):
+                continue
+            slug = f.stem
+            underscore = slug.replace("-", "_")
+            if slug in seen_ids or underscore in seen_ids:
+                continue
+            seen_ids.add(slug)
+            seen_ids.add(underscore)
+            results.append({
+                "id": slug,
+                "name": slug.replace("-", " ").replace("_", " ").title(),
+                "description": f"Cached on disk ({f.suffix})",
+                "access": "purchased" if f.suffix == ".agx" else "authored/purchased",
+                "location": "cached",
+                "ready": True,
+            })
+
+    # ── 3. Check marketplace for user's purchased/authored archetypes ──
+    api_key = os.environ.get("AGENTGUARD_API_KEY", "")
+    marketplace_note: str | None = None
+
+    if api_key:
+        base_url = os.environ.get(
+            "AGENTGUARD_API_URL",
+            os.environ.get("AGENTGUARD_PLATFORM_URL", "https://api.agentguard.rlabs.cl"),
+        ).rstrip("/")
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+        # ── Strategy: try the dedicated /my-archetypes endpoint first (1 call).
+        # Falls back to the N-call approach if the endpoint doesn't exist yet
+        # (backwards compat with older platform versions).
+        used_fast_path = False
+
+        try:
+            my_url = f"{base_url}/api/engine/my-archetypes"
+            my_req = urllib.request.Request(my_url, headers=headers)
+            with urllib.request.urlopen(my_req, timeout=15) as resp:
+                my_data = json.loads(resp.read())
+
+            # Fast path succeeded — parse the response
+            for item in my_data.get("archetypes", []):
+                slug = item.get("slug", "")
+                underscore = slug.replace("-", "_")
+                if slug in seen_ids or underscore in seen_ids:
+                    continue
+                seen_ids.add(slug)
+                seen_ids.add(underscore)
+                results.append({
+                    "id": slug,
+                    "name": item.get("name", ""),
+                    "description": item.get("description", ""),
+                    "access": item.get("access", "purchased"),
+                    "location": "remote",
+                    "ready": False,
+                    "category": item.get("category", ""),
+                })
+            used_fast_path = True
+
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                pass  # Endpoint not deployed yet — fall back to legacy
+            elif exc.code in (401, 403):
+                marketplace_note = (
+                    "API key is invalid or expired. Check AGENTGUARD_API_KEY in MCP config."
+                )
+                used_fast_path = True  # Don't retry with legacy
+            else:
+                logger.warning("my-archetypes endpoint error: %s", exc)
+        except (urllib.error.URLError, OSError, ValueError):
+            pass  # Network error — fall back to legacy
+
+        # ── Legacy fallback: check marketplace + individual license calls ──
+        if not used_fast_path:
+            user_id: str | None = None
+            try:
+                validate_url = f"{base_url}/api/engine/validate"
+                req = urllib.request.Request(validate_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    user_data = json.loads(resp.read())
+                    user_id = user_data.get("user_id")
+            except Exception:
+                pass
+
+            try:
+                authored_items: list[dict] = []
+                needs_license_check: list[dict] = []
+
+                page = 1
+                while page <= 5:
+                    url = f"{base_url}/api/marketplace/archetypes?page={page}&limit=50"
+                    req = urllib.request.Request(url)
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        data = json.loads(resp.read())
+
+                    items = data.get("items", [])
+                    if not items:
+                        break
+
+                    for item in items:
+                        slug = item.get("slug", "")
+                        underscore = slug.replace("-", "_")
+                        if slug in seen_ids or underscore in seen_ids:
+                            continue
+                        author_id = item.get("author_id", "")
+                        if user_id and author_id == user_id:
+                            authored_items.append(item)
+                        else:
+                            needs_license_check.append(item)
+
+                    total = data.get("total", 0)
+                    if page * 50 >= total:
+                        break
+                    page += 1
+
+                for item in authored_items:
+                    slug = item.get("slug", "")
+                    seen_ids.add(slug)
+                    seen_ids.add(slug.replace("-", "_"))
+                    results.append({
+                        "id": slug,
+                        "name": item.get("name", ""),
+                        "description": item.get("description", ""),
+                        "access": "authored",
+                        "location": "remote",
+                        "ready": False,
+                        "category": item.get("category", ""),
+                    })
+
+                # Cap at 15 license checks to keep response time reasonable
+                checked = 0
+                for item in needs_license_check:
+                    if checked >= 15:
+                        marketplace_note = (
+                            f"License checked for {checked} of {len(needs_license_check)} "
+                            "non-authored marketplace archetypes. Some may not appear. "
+                            "Use search_marketplace to check specific ones."
+                        )
+                        break
+                    slug = item.get("slug", "")
+                    try:
+                        lic_url = f"{base_url}/api/engine/license/{slug}"
+                        lic_req = urllib.request.Request(lic_url, headers=headers)
+                        with urllib.request.urlopen(lic_req, timeout=5) as lic_resp:
+                            lic_data = json.loads(lic_resp.read())
+                        checked += 1
+                        if not lic_data.get("licensed", False):
+                            continue
+                        seen_ids.add(slug)
+                        seen_ids.add(slug.replace("-", "_"))
+                        results.append({
+                            "id": slug,
+                            "name": item.get("name", ""),
+                            "description": item.get("description", ""),
+                            "access": "purchased" if lic_data.get("reason") != "free" else "free",
+                            "location": "remote",
+                            "ready": False,
+                            "category": item.get("category", ""),
+                        })
+                    except Exception:
+                        checked += 1
+
+            except (urllib.error.URLError, OSError, ValueError):
+                pass  # Non-fatal
+    else:
+        marketplace_note = (
+            "AGENTGUARD_API_KEY not set — only showing built-in and locally cached archetypes. "
+            "Set the API key in MCP config to see marketplace archetypes you've authored or purchased."
+        )
+
+    # ── 4. Build markdown table ──
+    table_lines = [
+        "| Archetype | Access | Location | Ready | Description |",
+        "|-----------|--------|----------|-------|-------------|",
+    ]
+    for r in results:
+        ready_icon = "Yes" if r["ready"] else "Download needed"
+        desc = (r["description"] or "")[:60]
+        table_lines.append(
+            f"| `{r['id']}` | {r['access']} | {r['location']} | {ready_icon} | {desc} |"
+        )
+
+    response: dict[str, Any] = {
+        "summary": f"{len(results)} archetypes accessible to this user",
+        "table": "\n".join(table_lines),
+        "archetypes": results,
+        "usage_hint": (
+            "To use any archetype listed here, pass its 'id' as the `archetype` "
+            "parameter to any pipeline tool (skeleton, validate, etc.). "
+            "Archetypes with location='remote' will be auto-downloaded on first use."
+        ),
+    }
+    if marketplace_note:
+        response["note"] = marketplace_note
+
+    return json.dumps(response, indent=2)
 
 
 async def agentguard_reload_archetypes() -> str:
