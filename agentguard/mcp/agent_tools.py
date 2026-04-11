@@ -110,9 +110,10 @@ def _load_arch(archetype: str) -> Any:
     """Load an archetype by ID.
 
     Resolution order:
-    1. Built-in registry  (no auth required)
-    2. In-process cache   (already fetched this session)
-    3. Marketplace API    (requires AGENTGUARD_API_KEY + ownership/purchase)
+    1. Built-in + user registry  (no auth required)
+    2. In-process cache          (already fetched this session)
+    3. Lazy reload of user dir   (picks up CLI installs or .agx from prior sessions)
+    4. Marketplace API download  (requires AGENTGUARD_API_KEY + ownership/purchase)
     """
     from agentguard.archetypes.base import Archetype
 
@@ -126,11 +127,26 @@ def _load_arch(archetype: str) -> Any:
         except KeyError:
             continue
 
-    # Check cache with both hyphen and underscore variants
+    # Check in-process cache with both hyphen and underscore variants
     for variant in (archetype, underscore, hyphen):
         if variant in _marketplace_cache:
             return _marketplace_cache[variant]
 
+    # Lazy reload: re-scan user dir in case an archetype was installed via CLI
+    # or cached as .agx from a previous MCP session.  This is cheap (directory
+    # glob) and only triggers when the archetype isn't already in the registry.
+    from agentguard.archetypes.registry import get_archetype_registry
+
+    registry = get_archetype_registry()
+    registry.reload_user_archetypes()
+
+    for variant in (archetype, underscore, hyphen):
+        try:
+            return Archetype.load(variant)
+        except KeyError:
+            continue
+
+    # Not found locally — try marketplace API download
     return _fetch_from_marketplace(archetype)
 
 
@@ -186,7 +202,7 @@ def _try_load_cached_agx(archetype_id: str) -> Any | None:
                 archetype_id, exc,
             )
             return None
-    elif yaml_path.exists():
+    elif yaml_path is not None and yaml_path.exists():
         try:
             yaml_content = yaml_path.read_text(encoding="utf-8")
             registry = get_archetype_registry()
@@ -239,8 +255,11 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
     api_key = os.environ.get("AGENTGUARD_API_KEY", "")
     if not api_key:
         raise KeyError(
-            f"Archetype '{archetype_id}' is not a built-in. "
-            "Set the AGENTGUARD_API_KEY environment variable to load marketplace archetypes."
+            f"Archetype '{archetype_id}' is not a built-in archetype and cannot be loaded "
+            "because AGENTGUARD_API_KEY is not set. To use marketplace archetypes, the user "
+            "must add their API key to the MCP server config (env AGENTGUARD_API_KEY). "
+            "Built-in archetypes that work without an API key: api_backend, web_app, "
+            "react_spa, cli_tool, library, script, debug_backend, debug_frontend."
         )
 
     # ── Try local encrypted/plaintext cache first (both slug formats) ──
@@ -493,31 +512,61 @@ async def agentguard_skeleton(
     """
     try:
         arch = _load_arch(archetype)
-    except (PermissionError, RuntimeError) as exc:
-        # Auth or download error — surface to the LLM so it can inform the user
+    except PermissionError as exc:
+        # Auth or access error — guide the agent clearly
+        error_msg = str(exc)
+        if "401" in error_msg or "Invalid" in error_msg or "expired" in error_msg:
+            fix = (
+                "The AGENTGUARD_API_KEY is invalid or expired. "
+                "Ask the user to check their API key in their MCP server configuration "
+                "(e.g. .vscode/mcp.json, claude_desktop_config.json) and ensure it starts with 'ag_'."
+            )
+        else:
+            fix = (
+                "The user does not have access to this marketplace archetype. "
+                "They must either be the author or have purchased it. "
+                "Direct them to https://agentguard.rlabs.cl/marketplace to purchase it. "
+                "Alternatively, use `list_archetypes` to see archetypes they already have access to."
+            )
         return json.dumps(
             {
-                "error": str(exc),
+                "error": error_msg,
                 "archetype_requested": archetype,
-                "fix": (
-                    "Check that AGENTGUARD_API_KEY is set correctly in .vscode/mcp.json "
-                    "and that you have access to this archetype in the marketplace."
-                ),
+                "error_type": "permission",
+                "fix": fix,
             },
             indent=2,
         )
-    except (KeyError, Exception):
-        # Archetype genuinely not found — return helpful error with available list
+    except KeyError as exc:
+        # Archetype not found — return helpful error with available list
         from agentguard.archetypes.registry import get_archetype_registry
         available_ids = get_archetype_registry().list_available()
         return json.dumps(
             {
                 "error": f"Archetype '{archetype}' not found.",
-                "available": available_ids,
+                "error_type": "not_found",
+                "available_local": available_ids,
                 "fix": (
-                    "Pass one of the listed archetype IDs as the `archetype` parameter. "
-                    "Call `list_archetypes` to get full descriptions, including marketplace "
-                    "archetypes. Use `search_marketplace` to discover more."
+                    "This archetype was not found in the built-in registry or the marketplace. "
+                    "Check the spelling — try both hyphens ('my-archetype') and underscores ('my_archetype'). "
+                    "Use `list_archetypes` to see all available archetypes (local + marketplace). "
+                    "Use `search_marketplace(query='...')` to search by keyword."
+                ),
+            },
+            indent=2,
+        )
+    except RuntimeError as exc:
+        # Unexpected API error
+        return json.dumps(
+            {
+                "error": str(exc),
+                "archetype_requested": archetype,
+                "error_type": "runtime",
+                "fix": (
+                    "An unexpected error occurred while loading the archetype. "
+                    "This may be a temporary marketplace API issue. Try again, or "
+                    "use a built-in archetype instead: api_backend, web_app, react_spa, "
+                    "cli_tool, library, script, debug_backend, debug_frontend."
                 ),
             },
             indent=2,

@@ -94,7 +94,7 @@ needs to guide code generation for a specific project type.
 - **context_recipes** — token budgets and context inclusions per level.
 - **reference_patterns** — named patterns (e.g. `fastapi_crud_pattern`).
 
-### Built-in archetypes
+### Built-in archetypes (always available, no API key needed)
 - `api_backend` — Python/FastAPI REST API with PostgreSQL
 - `web_app` — Full-stack web application
 - `react_spa` — React single-page application
@@ -104,13 +104,48 @@ needs to guide code generation for a specific project type.
 - `debug_backend` — Python/FastAPI debugging protocol
 - `debug_frontend` — React/TypeScript debugging protocol
 
-### User/community archetypes
-Install from the marketplace:
-```bash
-agentguard install <slug>
+### Marketplace archetypes (auto-downloaded, requires AGENTGUARD_API_KEY)
+Community-created archetypes for specialized project types. Examples:
+PRD documents, BPMN processes, business cases, hexagonal architectures, etc.
+
+### HOW TO USE ANY ARCHETYPE (IMPORTANT)
+
+**You do NOT need to install anything manually.** Just pass the archetype
+name or slug as the `archetype` parameter to any pipeline tool:
+
 ```
-Or place YAML files in `~/.agentguard/archetypes/`.
-Call `reload_archetypes` after adding new ones.
+skeleton(spec="...", archetype="prd")           # marketplace archetype
+skeleton(spec="...", archetype="api_backend")    # built-in archetype
+validate(files={...}, archetype="hexagonal-api") # marketplace archetype
+```
+
+AgentGuard resolves the archetype automatically:
+1. Checks built-in registry → loads instantly if found.
+2. Checks local cache (~/.agentguard/archetypes/) → loads if previously downloaded.
+3. Downloads from marketplace API → requires AGENTGUARD_API_KEY and the user
+   must be the author or have purchased the archetype. Cached for future use.
+
+Both hyphenated slugs (`hexagonal-api`) and underscored IDs (`hexagonal_api`)
+are accepted — they resolve to the same archetype.
+
+### Discovering archetypes
+- `my_archetypes` — shows ONLY archetypes THIS USER can access (built-in +
+  authored + purchased), with access type, location, and readiness in a table.
+  **Use this first** when the user asks what they can use.
+- `list_archetypes` — shows ALL available (built-in + full marketplace catalog).
+- `search_marketplace(query="...", category="...")` — search by keyword/category.
+- `get_archetype(name="...")` — inspect a specific archetype's full config.
+
+### Error handling
+- **KeyError / 'not found'** → archetype doesn't exist. Check spelling or
+  use `list_archetypes` / `search_marketplace` to find the right name.
+- **'API key not set'** → set AGENTGUARD_API_KEY in MCP config for marketplace access.
+- **PermissionError / 403** → user hasn't purchased this archetype in the marketplace.
+  Inform the user they need to purchase it at https://agentguard.rlabs.cl/marketplace.
+
+### Manual installation (alternative, rarely needed)
+Place YAML files directly in `~/.agentguard/archetypes/` and call
+`reload_archetypes` so the MCP server picks them up.
 """,
 
     "creating_archetypes": """\
@@ -364,18 +399,43 @@ You (the agent) review the files and return the scored results.
     "marketplace": """\
 # Marketplace — Community Archetypes
 
-The AgentGuard marketplace hosts community-contributed archetypes that
-extend the built-in set.
+The AgentGuard marketplace (https://agentguard.rlabs.cl/marketplace) hosts
+community-contributed archetypes that extend the built-in set.
 
-### Installing an archetype
+### Using a marketplace archetype (RECOMMENDED — no CLI needed)
+
+**Just pass the archetype slug to any pipeline tool.** AgentGuard downloads
+it automatically if the user owns or has purchased it.
+
+Example: to use the `prd` archetype from the marketplace:
+```
+skeleton(spec="Create a product requirements document for...", archetype="prd")
+```
+
+Requirements:
+- `AGENTGUARD_API_KEY` must be set in the MCP server environment.
+- The user must be the archetype author OR have purchased it in the marketplace.
+
+If access is denied (403), inform the user they need to purchase the
+archetype at https://agentguard.rlabs.cl/marketplace.
+
+### Discovering marketplace archetypes
+
+1. `my_archetypes` — shows ONLY archetypes this user can access (built-in +
+   authored + purchased), with a clear table showing access type and location.
+2. `list_archetypes` — shows built-in + full marketplace catalog. Marketplace
+   items have `"source": "marketplace"`.
+3. `search_marketplace(query="prd")` — search by keyword.
+4. `search_marketplace(category="product-design")` — filter by category.
+   Categories: engineering, product-design, technical-specs, marketing-gtm,
+   data-analytics, process-operations, strategy-management, academic-writing.
+
+### CLI installation (alternative, for offline use)
 ```bash
 agentguard install <slug>
 ```
-This downloads the archetype YAML to `~/.agentguard/archetypes/`.
-
-### After installation
-Call `reload_archetypes` in the MCP server so it picks up the new
-archetype without a restart.
+Downloads the archetype YAML to `~/.agentguard/archetypes/`.
+Call `reload_archetypes` after manual CLI installs.
 
 ### Publishing an archetype
 1. Create your archetype YAML (see `creating_archetypes` topic).
@@ -385,10 +445,6 @@ archetype without a restart.
    ```bash
    agentguard publish my_archetype.yaml
    ```
-
-### Archetype discovery
-Use `list_archetypes` to see all available archetypes (built-in +
-user-installed).  Use `get_archetype(name)` for full details.
 """,
 
     "configuration": """\
