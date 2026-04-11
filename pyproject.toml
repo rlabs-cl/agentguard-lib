@@ -1,1 +1,110 @@
-test
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rlabs-agentguard"
+version = "0.12.1"
+description = "A quality-assurance engine for LLM-generated code"
+readme = "README.MD"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{ name = "AgentGuard Team" }]
+keywords = ["llm", "code-generation", "quality-assurance", "ai", "agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0",
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+platform = [
+    "cryptography>=42.0.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+agentguard-mcp = "agentguard.mcp.server:run_mcp_server"
+
+# --- Hatch Build ---
+[tool.hatch.build.targets.wheel]
+packages = ["agentguard"]
+
+[tool.hatch.metadata]
+# Disable license-file auto-detection (twine 6.x compat)
+allow-direct-references = true
+
+[project.urls]
+Homepage = "https://agentguard.rlabs.cl"
+Documentation = "https://agentguard.rlabs.cl/docs"
+Repository = "https://github.com/rlabs-cl/agentguard-lib"
+Issues = "https://github.com/rlabs-cl/agentguard-lib/issues"
+Changelog = "https://github.com/rlabs-cl/agentguard-lib/releases"
+
+# --- Ruff ---
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agentguard"]
+
+# --- Mypy ---
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["mcp.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "agentguard.mcp.server",
+    "agentguard.mcp.tools",
+]
+disallow_untyped_decorators = false
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+# --- Coverage ---
+[tool.coverage.run]
+source = ["agentguard"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
