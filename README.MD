@@ -13,6 +13,22 @@
 
 ---
 
+## 🎬 Video Tutorials
+
+New to AgentGuard? Watch the demo series:
+
+| # | Video | Duration |
+|---|-------|----------|
+| 00 | [What is AgentGuard? — Explainer](https://youtu.be/Fsl_BTeq0eM) | 3:54 |
+| 01 | [Installation & Setup from Zero](https://youtu.be/HUFiIHqNwfM) | 3:44 |
+| 02 | [Create a Project from Scratch with AI](https://youtu.be/mVh51d8gk1E) | ~6 min |
+| 03 | [Automatic Documentation — ADR, PRD & Dev Guide](https://youtu.be/m9HBhEpDjpI) | ~5 min |
+| 04 | [Migration: Spaghetti → CQRS Architecture](https://youtu.be/XT3KqAWfF3I) | ~6 min |
+
+> 🇪🇸 Spanish versions also available — [see full playlist](https://www.youtube.com/@rlabs)
+
+---
+
 ## Why AgentGuard
 
 AI agents generate code fast. But without structure, they hallucinate imports, skip error handling, and produce inconsistent architecture.
