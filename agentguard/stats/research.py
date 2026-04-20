@@ -31,7 +31,7 @@ from agentguard.stats.db import get_connection
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_RESEARCH_ENDPOINT = "https://api.agentguard.rlabs.cl/v1/research/events"
+_DEFAULT_RESEARCH_ENDPOINT = "https://api.agentguard.rlabs.cl/api/research/events"
 _ANON_SALT = "agentguard-research"
 
 

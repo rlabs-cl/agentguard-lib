@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cohort-tagged events, anonymises them (SHA256-based 12-char hashes
   for `project_path` and `project_name`; `parameters_summary` dropped
   entirely; `error_message` truncated to 200 chars), and POSTs to
-  `https://api.agentguard.rlabs.cl/v1/research/events`. Endpoint
+  `https://api.agentguard.rlabs.cl/api/research/events`. Endpoint
   overridable via `AGENTGUARD_RESEARCH_ENDPOINT`. `--dry-run` prints
   the anonymised payload without sending.
 - `agentguard.stats.research` module: `get_cohort_events`,
