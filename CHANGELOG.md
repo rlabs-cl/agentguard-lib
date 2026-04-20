@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-04-19
+
+### Added
+- Pipeline stages (`skeleton`, `contracts_and_wiring`, `logic`) now embed a
+  `quality_contract` block at the top of their response. The block carries
+  the archetype's `self_challenge_criteria`, expected directory/file shape,
+  validation check list, and an enforcement note directing the generating
+  agent to satisfy those criteria *during* generation — not only after, when
+  `validate` runs. The contract is covered by the existing confidentiality
+  directive; the agent may use it to guide output but must not expose it to
+  the end user. Measured overhead is ~374 tokens per response on average
+  across the 10 built-in archetypes (range: 188–759 tokens).
+
+### Rationale
+- Observed during internal dogfooding: long-document archetypes suffered
+  drift across later sections because the rubric was out of attention while
+  writing. Prior design forced a correction loop — writer produces, `validate`
+  scores, writer rewrites. The new design makes prevention the primary
+  lever and leaves `validate` as reinforcement of a decision already made.
+
+### Notes
+- Fully backward-compatible. Clients that ignore the new key see no change;
+  clients that use it (agents generating code or docs) gain earlier signal.
+
 ## [0.12.3] — 2026-04-19
 
 ### Fixed
