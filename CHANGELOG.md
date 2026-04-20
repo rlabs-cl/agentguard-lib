@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] — 2026-04-20
+
+### Added
+- **Research cohort telemetry (opt-in).** When the user exports
+  `AGENTGUARD_RESEARCH_COHORT=<id>`, every tool event recorded in the
+  local stats DB is tagged with that cohort id. With the env var unset
+  (the default), the column is `NULL` and the feature is invisible.
+- `python -m agentguard research upload` CLI subcommand. Fetches
+  cohort-tagged events, anonymises them (SHA256-based 12-char hashes
+  for `project_path` and `project_name`; `parameters_summary` dropped
+  entirely; `error_message` truncated to 200 chars), and POSTs to
+  `https://api.agentguard.rlabs.cl/v1/research/events`. Endpoint
+  overridable via `AGENTGUARD_RESEARCH_ENDPOINT`. `--dry-run` prints
+  the anonymised payload without sending.
+- `agentguard.stats.research` module: `get_cohort_events`,
+  `anonymise_events`, `upload_cohort` — publicly importable so research
+  tooling can integrate without shelling out.
+
+### Changed
+- `tool_events` schema gains a `research_cohort_id TEXT` column,
+  nullable, with an index for cohort-scoped queries. Existing
+  databases are migrated idempotently via `PRAGMA table_info` +
+  `ALTER TABLE` on the next `get_connection()` call; no manual step
+  required.
+- `StatsCollector.__init__` now snapshots the cohort id once at
+  session start, so a mid-session `AGENTGUARD_RESEARCH_COHORT` flip
+  does not split events across cohorts.
+
+### Context
+This release is the first piece of infrastructure for the controlled
+studies described in the rlabs-lab paper series (papers 002 and 005).
+It has no effect on commercial users who never set the env var — the
+feature surface is zero bytes of telemetry, zero network calls, until
+explicitly opted in.
+
 ## [0.13.0] — 2026-04-19
 
 ### Added

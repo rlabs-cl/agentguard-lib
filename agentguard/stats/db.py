@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS tool_events (
     context_size_chars INTEGER NOT NULL DEFAULT 0,
     parameters_summary TEXT,
     status          TEXT    NOT NULL DEFAULT 'success',
-    error_message   TEXT
+    error_message   TEXT,
+    research_cohort_id TEXT
 );
 """
 
@@ -68,9 +69,21 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_tool_events_session ON tool_events(session_id);",
     "CREATE INDEX IF NOT EXISTS idx_tool_events_tool ON tool_events(tool_name);",
     "CREATE INDEX IF NOT EXISTS idx_tool_events_ts ON tool_events(timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_tool_events_cohort ON tool_events(research_cohort_id);",
     "CREATE INDEX IF NOT EXISTS idx_compaction_session ON compaction_events(session_id);",
     "CREATE INDEX IF NOT EXISTS idx_session_summaries_sid ON session_summaries(session_id);",
 ]
+
+
+def _migrate_tool_events(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after the initial DDL on existing databases.
+
+    Idempotent: checks PRAGMA table_info and adds missing columns. Kept
+    in one place so future migrations follow the same pattern.
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(tool_events)")}
+    if "research_cohort_id" not in cols:
+        conn.execute("ALTER TABLE tool_events ADD COLUMN research_cohort_id TEXT;")
 
 
 def _ensure_dir() -> None:
@@ -94,6 +107,7 @@ def get_connection() -> sqlite3.Connection:
         conn.execute(_TOOL_EVENTS_DDL)
         conn.execute(_COMPACTION_EVENTS_DDL)
         conn.execute(_SESSION_SUMMARIES_DDL)
+        _migrate_tool_events(conn)
         for idx_sql in _INDEXES:
             conn.execute(idx_sql)
         conn.commit()
