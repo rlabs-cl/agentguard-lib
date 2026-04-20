@@ -25,6 +25,18 @@ def estimate_tokens(text: str | None) -> int:
     return max(1, len(str(text)) // 4)
 
 
+def current_research_cohort() -> str | None:
+    """Return the active research cohort id, or ``None`` if unset.
+
+    Research telemetry is strictly opt-in: unless the user exports
+    ``AGENTGUARD_RESEARCH_COHORT=<id>`` in their environment, this
+    returns ``None`` and no cohort tagging happens. Blank strings are
+    treated as unset.
+    """
+    value = os.environ.get("AGENTGUARD_RESEARCH_COHORT", "").strip()
+    return value or None
+
+
 class StatsCollector:
     """Collects tool-call and compaction metrics for the current session."""
 
@@ -39,6 +51,11 @@ class StatsCollector:
         self._tools_used: set[str] = set()
         self._archetypes_used: set[str] = set()
         self._compaction_count: int = 0
+        # Research cohort is resolved at init so that a mid-session env
+        # flip does not split events across cohorts. Re-reading per
+        # call would also be fine; this is a deliberate stability
+        # choice.
+        self.research_cohort_id: str | None = current_research_cohort()
 
     # ── Recording ──────────────────────────────────────────────────
 
@@ -66,8 +83,9 @@ class StatsCollector:
                        (timestamp, session_id, project_path, project_name,
                         tool_name, archetype, duration_ms,
                         input_tokens, output_tokens, total_tokens,
-                        context_size_chars, parameters_summary, status, error_message)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        context_size_chars, parameters_summary, status, error_message,
+                        research_cohort_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         now,
                         self.session_id,
@@ -83,6 +101,7 @@ class StatsCollector:
                         parameters_summary,
                         status,
                         error_message,
+                        self.research_cohort_id,
                     ),
                 )
                 conn.commit()
