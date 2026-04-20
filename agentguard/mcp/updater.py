@@ -130,10 +130,14 @@ async def check_for_update() -> str | None:
     try:
         import urllib.request
 
+        from agentguard._http import make_request
+
         loop = asyncio.get_running_loop()
         response_text = await loop.run_in_executor(
             None,
-            lambda: urllib.request.urlopen(PYPI_URL, timeout=5).read().decode(),  # noqa: S310
+            lambda: urllib.request.urlopen(  # noqa: S310
+                make_request(PYPI_URL), timeout=5
+            ).read().decode(),
         )
         data = json.loads(response_text)
         latest = data.get("info", {}).get("version", "")
