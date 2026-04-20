@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
+from agentguard._http import make_request
 from agentguard.mcp.agent_tools import _CONFIDENTIALITY_DIRECTIVE
 
 logger = logging.getLogger(__name__)
@@ -176,7 +177,7 @@ async def agentguard_list_archetypes() -> str:
         max_pages = 5  # safety limit
         while page <= max_pages:
             url = f"{base_url}/api/marketplace/archetypes?page={page}&limit={page_size}"
-            req = urllib.request.Request(url)
+            req = make_request(url)
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read())
 
@@ -299,7 +300,7 @@ async def agentguard_search_marketplace(
         url = f"{url}?{qs}"
 
     try:
-        req = urllib.request.Request(url)
+        req = make_request(url)
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except (urllib.error.URLError, OSError) as exc:
@@ -412,7 +413,7 @@ async def agentguard_my_archetypes() -> str:
 
         try:
             my_url = f"{base_url}/api/engine/my-archetypes"
-            my_req = urllib.request.Request(my_url, headers=headers)
+            my_req = make_request(my_url, headers=headers)
             with urllib.request.urlopen(my_req, timeout=15) as resp:
                 my_data = json.loads(resp.read())
 
@@ -439,9 +440,24 @@ async def agentguard_my_archetypes() -> str:
             if exc.code == 404:
                 pass  # Endpoint not deployed yet — fall back to legacy
             elif exc.code in (401, 403):
-                marketplace_note = (
-                    "API key is invalid or expired. Check AGENTGUARD_API_KEY in MCP config."
-                )
+                # Distinguish genuine auth failure from CDN / bot-protection
+                # challenges (e.g. Cloudflare 1010). The latter usually ships
+                # an HTML body with a CF error code — treat those as transient
+                # and leave the real reason in the note so the user can act.
+                body_snippet = ""
+                try:
+                    body_snippet = exc.read(2048).decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+                if "cloudflare" in body_snippet.lower() or "error code: 101" in body_snippet.lower():
+                    marketplace_note = (
+                        "Marketplace blocked by an upstream CDN rule — check "
+                        "the request User-Agent or whitelist this client."
+                    )
+                else:
+                    marketplace_note = (
+                        "API key is invalid or expired. Check AGENTGUARD_API_KEY in MCP config."
+                    )
                 used_fast_path = True  # Don't retry with legacy
             else:
                 logger.warning("my-archetypes endpoint error: %s", exc)
@@ -453,7 +469,7 @@ async def agentguard_my_archetypes() -> str:
             user_id: str | None = None
             try:
                 validate_url = f"{base_url}/api/engine/validate"
-                req = urllib.request.Request(validate_url, headers=headers)
+                req = make_request(validate_url, headers=headers)
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     user_data = json.loads(resp.read())
                     user_id = user_data.get("user_id")
@@ -467,7 +483,7 @@ async def agentguard_my_archetypes() -> str:
                 page = 1
                 while page <= 5:
                     url = f"{base_url}/api/marketplace/archetypes?page={page}&limit=50"
-                    req = urllib.request.Request(url)
+                    req = make_request(url)
                     with urllib.request.urlopen(req, timeout=10) as resp:
                         data = json.loads(resp.read())
 
@@ -518,7 +534,7 @@ async def agentguard_my_archetypes() -> str:
                     slug = item.get("slug", "")
                     try:
                         lic_url = f"{base_url}/api/engine/license/{slug}"
-                        lic_req = urllib.request.Request(lic_url, headers=headers)
+                        lic_req = make_request(lic_url, headers=headers)
                         with urllib.request.urlopen(lic_req, timeout=5) as lic_resp:
                             lic_data = json.loads(lic_resp.read())
                         checked += 1

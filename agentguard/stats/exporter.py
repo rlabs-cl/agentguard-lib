@@ -91,6 +91,8 @@ async def _export_platform(
     import urllib.error
     import urllib.request
 
+    from agentguard._http import make_request
+
     api_url = os.environ.get("AGENTGUARD_API_URL", "https://api.agentguard.dev")
     api_key = os.environ.get("AGENTGUARD_API_KEY", "")
 
@@ -104,7 +106,7 @@ async def _export_platform(
 
     url = f"{api_url}/api/usage/report"
     data = json.dumps(payload, default=str).encode()
-    req = urllib.request.Request(
+    req = make_request(
         url,
         data=data,
         headers={
@@ -177,6 +179,8 @@ async def _export_webhook(
     import urllib.error
     import urllib.request
 
+    from agentguard._http import make_request
+
     if not webhook_url:
         return {
             "records_exported": 0,
@@ -194,7 +198,7 @@ async def _export_webhook(
         sig = hmac.new(signing_secret.encode(), data, hashlib.sha256).hexdigest()
         headers["X-AgentGuard-Signature"] = f"sha256={sig}"
 
-    req = urllib.request.Request(
+    req = make_request(
         webhook_url,
         data=data,
         headers=headers,

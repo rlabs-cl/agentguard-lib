@@ -30,6 +30,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agentguard._http import make_request
+
 logger = logging.getLogger(__name__)
 
 _INACTIVITY_SECONDS: float = 30.0
@@ -226,7 +228,7 @@ class MCPUsageTracker:
 
         try:
             body = json.dumps(payload).encode()
-            req = urllib.request.Request(
+            req = make_request(
                 f"{self._api_url}/api/analytics/events/batch",
                 data=body,
                 headers={

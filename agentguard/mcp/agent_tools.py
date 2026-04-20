@@ -38,6 +38,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
+from agentguard._http import make_request
 from agentguard.mcp.usage_tracker import get_tracker as _get_tracker
 
 logger = logging.getLogger(__name__)
@@ -288,7 +289,7 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
 
     for slug in slugs_to_try:
         token_url = f"{base_url}/api/engine/archetypes/{slug}/download-token"
-        token_req = urllib.request.Request(token_url, method="POST", headers=headers, data=b"")
+        token_req = make_request(token_url, method="POST", headers=headers, data=b"")
         try:
             with urllib.request.urlopen(token_req) as resp:
                 token_data = _json.loads(resp.read())
@@ -322,7 +323,7 @@ def _fetch_from_marketplace(archetype_id: str) -> Any:
 
     # Step 2: consume the token and receive YAML content
     content_url = f"{base_url}/api/engine/archetypes/{resolved_slug}/content?token={download_token}"
-    content_req = urllib.request.Request(content_url, headers=headers)
+    content_req = make_request(content_url, headers=headers)
 
     try:
         with urllib.request.urlopen(content_req) as resp:
@@ -429,7 +430,7 @@ def _get_encryption_salt(base_url: str, api_key: str, headers: dict[str, str]) -
     # Fetch from /engine/validate
     try:
         validate_url = f"{base_url}/api/engine/validate"
-        req = urllib.request.Request(validate_url, headers=headers)
+        req = make_request(validate_url, headers=headers)
         with urllib.request.urlopen(req) as resp:
             data = _json.loads(resp.read())
 
