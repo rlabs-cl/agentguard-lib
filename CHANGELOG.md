@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] — 2026-04-19
+
+### Fixed
+- urllib outbound calls now send an explicit `User-Agent` so Cloudflare's
+  bot-protection layer in front of `api.agentguard.rlabs.cl` no longer
+  returns 403 (code 1010) on valid API keys. Previously the MCP surfaced
+  these as "API key is invalid or expired", which was misleading.
+- `my_archetypes` distinguishes genuine auth failures from CDN challenges
+  via body sniffing, so the error message matches the actual cause.
+
+### Added
+- `agentguard._http.make_request` helper that all internal HTTP call sites
+  now route through, guaranteeing a consistent UA.
+
 ## [0.10.0] — 2026-04-07
 
 ### Added
