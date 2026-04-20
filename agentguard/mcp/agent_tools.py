@@ -492,6 +492,49 @@ def _maturity_infrastructure(arch: Any) -> list[dict[str, str]]:
     return result
 
 
+def _build_quality_contract(arch: Any, stage: str) -> dict[str, Any]:
+    """Return the archetype's quality contract — criteria the generation must
+    satisfy end-to-end, shown to the calling agent at the *start* of each
+    pipeline stage rather than only at ``validate`` time.
+
+    Rationale (v0.13.0): previously the agent discovered the self-challenge
+    criteria only when ``validate`` ran, after the artefact was fully
+    generated. Long-document archetypes in particular suffered drift across
+    later sections because the criteria were out of attention. Embedding the
+    contract at the top of every pipeline response (skeleton, contracts,
+    logic) gives the agent the rubric *while writing*, turning prevention into
+    the primary lever and leaving ``validate`` as reinforcement.
+
+    The payload is intentionally compact: criteria verbatim, expected dirs
+    and file globs, and the scoring spec — no validation-run machinery,
+    because the agent already has ``validate`` for that. The
+    ``_CONFIDENTIALITY_DIRECTIVE`` attached to each tool response covers the
+    contract fields too; the agent may use them to guide generation but MUST
+    NOT paraphrase them back to the end user.
+    """
+    criteria: list[str] = list(getattr(getattr(arch, "self_challenge", None), "criteria", []) or [])
+    structure: dict[str, list[str]] = dict(getattr(arch, "structure", {}) or {})
+    validation = getattr(arch, "validation", None)
+    checks: list[str] = list(getattr(validation, "checks", []) or [])
+    return {
+        "stage": stage,
+        "must_satisfy_criteria": criteria,
+        "expected_structure": {
+            "dirs": structure.get("expected_dirs", []),
+            "files": structure.get("expected_files", []),
+        },
+        "validation_checks": checks,
+        "enforcement": (
+            "Generate this stage's output so that it already satisfies every "
+            "item in must_satisfy_criteria and the expected_structure shape. "
+            "At the end of the full pipeline, `validate` will re-score the "
+            "artefact against these same criteria — passing validate should "
+            "confirm a decision already made here, not surface first-time "
+            "violations."
+        ),
+    }
+
+
 # ── 1. skeleton (enhanced) ─────────────────────────────────────────
 
 @_track_mcp_tool
@@ -596,6 +639,7 @@ async def agentguard_skeleton(
                 "language": arch.tech_stack.language,
                 "framework": arch.tech_stack.framework,
             },
+            "quality_contract": _build_quality_contract(arch, stage="L1_skeleton"),
             "instructions": [m.content for m in messages],
             "expected_output_format": (
                 'JSON array: [{"path": "...", "purpose": "...", "tier": "config|foundation|feature"}]'
@@ -701,6 +745,7 @@ async def agentguard_contracts_and_wiring(
                 "already wired. Foundation files get stubs only. Feature files get "
                 "stubs + import wiring in one pass."
             ),
+            "quality_contract": _build_quality_contract(arch, stage="L2_L3_contracts_and_wiring"),
             "file_count": len(file_prompts),
             "files": file_prompts,
             "anti_patterns": [
@@ -862,6 +907,7 @@ async def agentguard_logic(
             "_confidentiality": _CONFIDENTIALITY_DIRECTIVE,
             "level": "L4 — Logic",
             "description": f"Implement the body of `{function_name}` in `{file_path}`.",
+            "quality_contract": _build_quality_contract(arch, stage="L4_logic"),
             "instructions": [m.content for m in messages],
             "next_step": (
                 "Repeat for each NotImplementedError function. "
