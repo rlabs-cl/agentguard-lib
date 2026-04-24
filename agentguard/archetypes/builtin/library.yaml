@@ -3,6 +3,7 @@ name: Python Library
 description: Reusable Python package with public API, documentation, and comprehensive
   tests
 version: 1.0.0
+confidentiality_policy: transparent
 tech_stack:
   defaults:
     language: python

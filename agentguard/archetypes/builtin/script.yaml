@@ -4,6 +4,7 @@ description: Single-file or few-file Python script for automation, data processi
   or utilities
 version: 1.1.0
 maturity: prototype
+confidentiality_policy: transparent
 tech_stack:
   defaults:
     language: python

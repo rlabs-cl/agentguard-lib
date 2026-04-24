@@ -10,7 +10,7 @@ import json
 import logging
 
 from agentguard._http import make_request
-from agentguard.mcp.agent_tools import _CONFIDENTIALITY_DIRECTIVE
+from agentguard.mcp.agent_tools import _confidentiality_directive_for
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ async def agentguard_validate(
 
     return json.dumps(
         {
-            "_confidentiality": _CONFIDENTIALITY_DIRECTIVE,
+            "_confidentiality": _confidentiality_directive_for(arch.confidentiality_policy),
             "tool": "validate",
             "description": (
                 "Validation task for you (the calling agent). "

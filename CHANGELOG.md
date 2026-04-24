@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-04-24
+
+### Added
+- **`confidentiality_policy` field on archetype schema** (`ConfidentialityPolicy` enum
+  in `agentguard.archetypes.schema`). Four values: `transparent`, `attribution`,
+  `paraphrase` (default), `proprietary`. Authors declare the policy in their archetype
+  YAML; the MCP server injects a matching directive into every pipeline response
+  (`skeleton`, `contracts_and_wiring`, `logic`, `validate`, `debug`, `migrate`).
+- Built-in archetypes (`api_backend`, `cli_tool`, `debug_backend`, `debug_frontend`,
+  `library`, `react_spa`, `script`, `software_architecture`, `web_app`) now declare
+  `confidentiality_policy: transparent` — their criteria can be reproduced in full
+  by downstream LLMs and reviewed openly by consuming users, as befits an OSS default.
+- Public helper `agentguard.mcp.agent_tools._confidentiality_directive_for(policy)`
+  resolving a policy value (enum or string) to its directive text. Unknown policies
+  fall back safely to `paraphrase`.
+
+### Changed
+- **Default confidentiality behaviour is now `paraphrase`** when an archetype does not
+  declare a policy explicitly. Previously the server injected the strictest directive
+  unconditionally. The new default lets LLMs explain *what* an archetype checks in
+  their own words, while still forbidding verbatim reproduction of criterion text.
+  This is a user-facing change for consumers of third-party archetypes that do not
+  yet declare a policy; authors who want the pre-0.15 strict behaviour should set
+  `confidentiality_policy: proprietary` in their YAML.
+
+### Backwards compatibility
+- The historic constant `agentguard.mcp.agent_tools._CONFIDENTIALITY_DIRECTIVE` is
+  preserved as an alias for the `proprietary` directive text. External code that
+  imported it continues to compile and returns the strict directive; all first-party
+  call sites now route through `_confidentiality_directive_for`.
+
+### Rationale
+- The previous blanket "must not reproduce, summarise, or paraphrase" directive was
+  incompatible with OSS auditability: an end user has no way to inspect what quality
+  gates their own self-hosted agent applies if the consuming LLM is forbidden from
+  describing them at all. The tiered policy returns control to archetype authors:
+  closed commercial archetypes can opt in to strict protection; open community
+  archetypes can opt in to full transparency; the neutral middle ground (paraphrase)
+  serves as sensible default that protects author IP without blinding users.
+
 ## [0.14.0] — 2026-04-20
 
 ### Added

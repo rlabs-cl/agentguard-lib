@@ -3,6 +3,7 @@ name: CLI Tool
 description: Command-line application with subcommands, arguments, and rich output
 version: 1.1.0
 maturity: production
+confidentiality_policy: transparent
 tech_stack:
   defaults:
     language: python

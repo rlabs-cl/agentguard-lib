@@ -3,6 +3,7 @@ name: Backend Debugger
 description: 'Debugging protocol for backend services: APIs, workers, databases, queues'
 version: 1.0.0
 maturity: production
+confidentiality_policy: transparent
 tech_stack:
   defaults:
     language: python

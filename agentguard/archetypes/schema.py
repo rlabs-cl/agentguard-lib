@@ -23,6 +23,24 @@ class Maturity(StrEnum):
     enterprise = "enterprise"
 
 
+class ConfidentialityPolicy(StrEnum):
+    """Author's policy for how the archetype's internals may be shared with end users.
+
+    - transparent:  Criteria, structure, and YAML may be reproduced verbatim in responses.
+                    Intended for own archetypes where full auditability is the point.
+    - attribution:  Reproduction permitted with explicit attribution to the author/archetype.
+    - paraphrase:   DEFAULT. LLMs may paraphrase/explain what the archetype checks at a
+                    descriptive level, but MUST NOT reproduce criterion text verbatim.
+    - proprietary:  Strict no-share: describe WHAT the archetype builds and QUALITY of its
+                    output only, never criteria text, counts, categories, or weights.
+    """
+
+    transparent = "transparent"
+    attribution = "attribution"
+    paraphrase = "paraphrase"
+    proprietary = "proprietary"
+
+
 class OutputKind(StrEnum):
     """What kind of artifact this archetype produces.
 
@@ -360,6 +378,15 @@ class ArchetypeSchema(BaseModel):
     description: str = Field(default="", max_length=2000)
     version: str = Field(default="1.0.0", max_length=32)
     maturity: Maturity = Maturity.production
+    confidentiality_policy: ConfidentialityPolicy = Field(
+        default=ConfidentialityPolicy.paraphrase,
+        description=(
+            "Author's policy for how the archetype's internals may be shared with end "
+            "users by the consuming LLM. Default 'paraphrase' allows descriptive "
+            "explanation without verbatim reproduction; 'transparent' allows verbatim; "
+            "'proprietary' forbids all reproduction. See ConfidentialityPolicy enum."
+        ),
+    )
     output_kind: OutputKind = OutputKind.code
     category: str = Field(default="general", max_length=64)
 

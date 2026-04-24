@@ -3,6 +3,7 @@ name: "Software Architecture Design"
 description: "Architectural design deliverables for software systems — ADRs, C4 diagrams, component boundaries, API contracts, and infrastructure topology"
 version: "1.0.0"
 maturity: "production"
+confidentiality_policy: transparent
 
 tech_stack:
   defaults:
