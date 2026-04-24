@@ -551,7 +551,10 @@ def _validate_archetype_dict(data: dict[str, Any]) -> ArchetypeSchema:
     normalized: dict[str, Any] = {}
 
     # Top-level scalars
-    for key in ("id", "name", "description", "version", "maturity", "output_kind", "category"):
+    for key in (
+        "id", "name", "description", "version",
+        "maturity", "confidentiality_policy", "output_kind", "category",
+    ):
         if key in data:
             normalized[key] = data[key]
 

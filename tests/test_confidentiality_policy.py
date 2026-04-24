@@ -146,6 +146,25 @@ class TestSchemaValidation:
         schema = ArchetypeSchema(**raw)
         assert schema.confidentiality_policy == ConfidentialityPolicy.paraphrase
 
+    def test_validate_yaml_path_preserves_policy(self) -> None:
+        """Regression: _validate_archetype_dict must propagate confidentiality_policy."""
+        from agentguard.archetypes.schema import _validate_archetype_dict
+
+        raw = {
+            "id": "yaml_path_archetype",
+            "name": "YAML Path",
+            "confidentiality_policy": "transparent",
+        }
+        schema = _validate_archetype_dict(raw)
+        assert schema.confidentiality_policy == ConfidentialityPolicy.transparent
+
+    def test_validate_yaml_path_defaults_to_paraphrase_when_absent(self) -> None:
+        from agentguard.archetypes.schema import _validate_archetype_dict
+
+        raw = {"id": "yaml_no_policy", "name": "No Policy"}
+        schema = _validate_archetype_dict(raw)
+        assert schema.confidentiality_policy == ConfidentialityPolicy.paraphrase
+
 
 class TestBackwardCompatibility:
     def test_historic_constant_still_exists(self) -> None:
