@@ -4,6 +4,7 @@ description: React + TypeScript SPA with Vite, component architecture, and clien
   state management
 version: 1.0.0
 maturity: production
+confidentiality_policy: transparent
 tech_stack:
   defaults:
     language: typescript

@@ -124,6 +124,7 @@ class Archetype:
     description: str = ""
     version: str = "1.0.0"
     maturity: str = "production"  # prototype | production | enterprise
+    confidentiality_policy: str = "paraphrase"  # transparent | attribution | paraphrase | proprietary
     output_kind: str = "code"  # code | content | hybrid
     category: str = "general"  # marketplace category
 
@@ -260,6 +261,7 @@ def _from_dict(data: dict[str, Any]) -> Archetype:
         description=data.get("description", ""),
         version=data.get("version", "1.0.0"),
         maturity=data.get("maturity", "production"),
+        confidentiality_policy=data.get("confidentiality_policy", "paraphrase"),
         output_kind=data.get("output_kind", "code"),
         category=data.get("category", "general"),
         tech_stack=tech,
